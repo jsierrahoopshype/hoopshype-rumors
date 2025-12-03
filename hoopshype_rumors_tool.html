@@ -1,0 +1,643 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>HoopsHype Rumors Archive - 15 Years of NBA Rumors</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: 'Arial', sans-serif;
+            background: #f4f4f4;
+            color: #333;
+        }
+        
+        /* Header */
+        .header {
+            background: #1a1a1a;
+            color: white;
+            padding: 20px 0;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .header h1 {
+            font-size: 28px;
+            margin-bottom: 5px;
+        }
+        
+        .header .subtitle {
+            font-size: 14px;
+            color: #999;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        /* Search Section */
+        .search-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .search-box {
+            width: 100%;
+            padding: 15px 20px;
+            font-size: 16px;
+            border: 2px solid #e0e0e0;
+            border-radius: 5px;
+            transition: border-color 0.3s;
+        }
+        
+        .search-box:focus {
+            outline: none;
+            border-color: #e74c3c;
+        }
+        
+        .search-hint {
+            margin-top: 10px;
+            font-size: 13px;
+            color: #666;
+        }
+        
+        /* Trending Section */
+        .trending-section {
+            background: white;
+            padding: 30px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .trending-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 20px;
+            color: #e74c3c;
+            border-bottom: 2px solid #e74c3c;
+            padding-bottom: 10px;
+        }
+        
+        .trending-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 20px;
+        }
+        
+        .trending-box {
+            background: #f9f9f9;
+            padding: 20px;
+            border-radius: 5px;
+            border-left: 4px solid #e74c3c;
+        }
+        
+        .trending-box h3 {
+            font-size: 16px;
+            margin-bottom: 15px;
+            color: #333;
+        }
+        
+        .trending-item {
+            padding: 8px 0;
+            border-bottom: 1px solid #e0e0e0;
+            cursor: pointer;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            transition: background 0.2s;
+        }
+        
+        .trending-item:hover {
+            background: white;
+            padding-left: 5px;
+        }
+        
+        .trending-item:last-child {
+            border-bottom: none;
+        }
+        
+        .trending-name {
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .trending-count {
+            background: #e74c3c;
+            color: white;
+            padding: 2px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: bold;
+        }
+        
+        /* Stats Bar */
+        .stats-bar {
+            display: flex;
+            justify-content: space-around;
+            background: white;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .stat {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 28px;
+            font-weight: bold;
+            color: #e74c3c;
+        }
+        
+        .stat-label {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        /* Results Section */
+        .results-header {
+            background: white;
+            padding: 15px 20px;
+            border-radius: 8px 8px 0 0;
+            font-weight: bold;
+            color: #333;
+        }
+        
+        .rumor-card {
+            background: white;
+            padding: 20px;
+            margin-bottom: 2px;
+            transition: background 0.2s;
+        }
+        
+        .rumor-card:hover {
+            background: #f9f9f9;
+        }
+        
+        .rumor-card:last-child {
+            border-radius: 0 0 8px 8px;
+        }
+        
+        .rumor-date {
+            font-size: 12px;
+            color: #999;
+            margin-bottom: 8px;
+        }
+        
+        .rumor-text {
+            font-size: 15px;
+            line-height: 1.6;
+            color: #333;
+            margin-bottom: 12px;
+        }
+        
+        .rumor-meta {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+        
+        .rumor-outlet {
+            font-size: 13px;
+            color: #666;
+            font-style: italic;
+        }
+        
+        .rumor-source {
+            font-size: 13px;
+            color: #e74c3c;
+            text-decoration: none;
+        }
+        
+        .rumor-source:hover {
+            text-decoration: underline;
+        }
+        
+        .rumor-tags {
+            display: flex;
+            gap: 5px;
+            flex-wrap: wrap;
+        }
+        
+        .rumor-tag {
+            background: #f0f0f0;
+            padding: 4px 10px;
+            border-radius: 15px;
+            font-size: 12px;
+            color: #666;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        
+        .rumor-tag:hover {
+            background: #e74c3c;
+            color: white;
+        }
+        
+        .loading {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+            font-size: 16px;
+        }
+        
+        .no-results {
+            text-align: center;
+            padding: 40px;
+            color: #999;
+        }
+        
+        /* Pagination */
+        .pagination {
+            display: flex;
+            justify-content: center;
+            gap: 10px;
+            margin: 30px 0;
+        }
+        
+        .pagination button {
+            padding: 10px 15px;
+            background: white;
+            border: 1px solid #e0e0e0;
+            border-radius: 5px;
+            cursor: pointer;
+            font-size: 14px;
+            transition: all 0.2s;
+        }
+        
+        .pagination button:hover {
+            background: #f0f0f0;
+        }
+        
+        .pagination button.active {
+            background: #e74c3c;
+            color: white;
+            border-color: #e74c3c;
+        }
+        
+        .pagination button:disabled {
+            opacity: 0.3;
+            cursor: not-allowed;
+        }
+        
+        /* Mobile responsive */
+        @media (max-width: 768px) {
+            .trending-grid {
+                grid-template-columns: 1fr;
+            }
+            
+            .stats-bar {
+                flex-direction: column;
+                gap: 20px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>🏀 HoopsHype Rumors Archive</h1>
+        <p class="subtitle">15 Years of NBA Rumors • 606,456+ Rumors • Search & Explore</p>
+    </div>
+    
+    <div class="container">
+        <!-- Search Section -->
+        <div class="search-section">
+            <input type="text" 
+                   class="search-box" 
+                   id="searchBox" 
+                   placeholder="Search rumors... (e.g., LeBron James trade, Lakers free agency, Giannis)"
+                   autocomplete="off">
+            <div class="search-hint">
+                💡 Tip: Just type naturally - "LeBron James trade" or "Lakers, free agency" both work!
+            </div>
+        </div>
+        
+        <!-- Trending Section -->
+        <div class="trending-section" id="trendingSection">
+            <div class="trending-header">🔥 Trending in Last 24 Hours</div>
+            <div class="trending-grid">
+                <div class="trending-box">
+                    <h3>Top 5 Players</h3>
+                    <div id="trendingPlayers">Loading...</div>
+                </div>
+                <div class="trending-box">
+                    <h3>Top 5 Teams</h3>
+                    <div id="trendingTeams">Loading...</div>
+                </div>
+                <div class="trending-box">
+                    <h3>Hot Topics</h3>
+                    <div id="trendingTopics">Loading...</div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Stats Bar -->
+        <div class="stats-bar" id="statsBar">
+            <div class="stat">
+                <div class="stat-number" id="totalRumors">-</div>
+                <div class="stat-label">Total Rumors</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number" id="filteredRumors">-</div>
+                <div class="stat-label">Showing</div>
+            </div>
+            <div class="stat">
+                <div class="stat-number" id="dateRange">-</div>
+                <div class="stat-label">Years of Data</div>
+            </div>
+        </div>
+        
+        <!-- Results -->
+        <div class="results-header" id="resultsHeader">
+            All Rumors
+        </div>
+        <div id="results">
+            <div class="loading">Loading rumors database...</div>
+        </div>
+        
+        <!-- Pagination -->
+        <div class="pagination" id="pagination"></div>
+    </div>
+    
+    <script>
+        let allRumors = [];
+        let filteredRumors = [];
+        let currentPage = 1;
+        const rumorsPerPage = 25;
+        
+        // Load data (handles multi-part files)
+        async function loadData() {
+            try {
+                // Try loading index for multi-part files
+                let indexResponse;
+                try {
+                    indexResponse = await fetch('rumors_index.json');
+                } catch (e) {
+                    console.log('No index file, trying single file...');
+                }
+                
+                if (indexResponse && indexResponse.ok) {
+                    // Multi-part mode
+                    const index = await indexResponse.json();
+                    console.log(`Loading ${index.num_files} files...`);
+                    
+                    allRumors = [];
+                    for (let i = 0; i < index.files.length; i++) {
+                        const filename = index.files[i];
+                        console.log(`Loading ${filename}...`);
+                        const partResponse = await fetch(filename);
+                        const partData = await partResponse.json();
+                        allRumors = allRumors.concat(partData);
+                    }
+                } else {
+                    // Single file mode
+                    const response = await fetch('hoopshype_all_rumors.json');
+                    allRumors = await response.json();
+                }
+                
+                console.log(`Loaded ${allRumors.length} total rumors`);
+                
+                // Calculate trending
+                calculateTrending();
+                
+                // Update stats
+                updateStats();
+                
+                // Show all rumors initially
+                filteredRumors = allRumors;
+                displayPage(1);
+                
+                // Setup search
+                document.getElementById('searchBox').addEventListener('input', handleSearch);
+                
+            } catch (error) {
+                document.getElementById('results').innerHTML = 
+                    '<div class="no-results">Error loading data. Make sure all rumor files are in the same folder.</div>';
+                console.error(error);
+            }
+        }
+        
+        // Calculate trending from last 24 hours
+        function calculateTrending() {
+            const now = new Date();
+            const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
+            
+            // Filter last 24 hours
+            const recentRumors = allRumors.filter(r => {
+                const rumorDate = new Date(r.archive_date);
+                return rumorDate >= yesterday;
+            });
+            
+            // Count tags
+            const playerCounts = {};
+            const teamCounts = {};
+            const topicCounts = {
+                'Free Agency': 0,
+                'Trade': 0,
+                'Draft': 0,
+                'Injuries': 0,
+                'Frivolities': 0
+            };
+            
+            // NBA teams list
+            const teams = ['Atlanta Hawks', 'Boston Celtics', 'Brooklyn Nets', 'Charlotte Hornets', 
+                          'Chicago Bulls', 'Cleveland Cavaliers', 'Dallas Mavericks', 'Denver Nuggets',
+                          'Detroit Pistons', 'Golden State Warriors', 'Houston Rockets', 'Indiana Pacers',
+                          'Los Angeles Clippers', 'Los Angeles Lakers', 'Memphis Grizzlies', 'Miami Heat',
+                          'Milwaukee Bucks', 'Minnesota Timberwolves', 'New Orleans Pelicans', 'New York Knicks',
+                          'Oklahoma City Thunder', 'Orlando Magic', 'Philadelphia 76ers', 'Phoenix Suns',
+                          'Portland Trail Blazers', 'Sacramento Kings', 'San Antonio Spurs', 'Toronto Raptors',
+                          'Utah Jazz', 'Washington Wizards'];
+            
+            recentRumors.forEach(rumor => {
+                rumor.tags.forEach(tag => {
+                    // Is it a team?
+                    if (teams.includes(tag)) {
+                        teamCounts[tag] = (teamCounts[tag] || 0) + 1;
+                    }
+                    // Is it a tracked topic?
+                    else if (topicCounts.hasOwnProperty(tag)) {
+                        topicCounts[tag]++;
+                    }
+                    // Otherwise assume it's a player/person
+                    else {
+                        playerCounts[tag] = (playerCounts[tag] || 0) + 1;
+                    }
+                });
+            });
+            
+            // Sort and get top 5
+            const topPlayers = Object.entries(playerCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+            
+            const topTeams = Object.entries(teamCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+            
+            const topTopics = Object.entries(topicCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 5);
+            
+            // Display trending
+            displayTrending('trendingPlayers', topPlayers);
+            displayTrending('trendingTeams', topTeams);
+            displayTrending('trendingTopics', topTopics);
+        }
+        
+        function displayTrending(elementId, items) {
+            const element = document.getElementById(elementId);
+            
+            if (items.length === 0 || items.every(([name, count]) => count === 0)) {
+                element.innerHTML = '<div style="color: #999; font-size: 13px;">No activity in last 24 hours</div>';
+                return;
+            }
+            
+            element.innerHTML = items.map(([name, count]) => `
+                <div class="trending-item" onclick="searchTag('${name.replace(/'/g, "\\'")}')">
+                    <span class="trending-name">${name}</span>
+                    <span class="trending-count">${count}</span>
+                </div>
+            `).join('');
+        }
+        
+        function searchTag(tag) {
+            document.getElementById('searchBox').value = tag;
+            handleSearch();
+        }
+        
+        function handleSearch() {
+            const query = document.getElementById('searchBox').value.trim().toLowerCase();
+            
+            if (!query) {
+                filteredRumors = allRumors;
+                document.getElementById('resultsHeader').textContent = 'All Rumors';
+            } else {
+                // Split by commas or spaces
+                const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
+                
+                filteredRumors = allRumors.filter(rumor => {
+                    // Check if ALL search terms appear in either text or tags
+                    return searchTerms.every(term => {
+                        const inText = rumor.text.toLowerCase().includes(term);
+                        const inTags = rumor.tags.some(tag => tag.toLowerCase().includes(term));
+                        return inText || inTags;
+                    });
+                });
+                
+                document.getElementById('resultsHeader').textContent = 
+                    `Search Results for "${query}" (${filteredRumors.length.toLocaleString()} rumors)`;
+            }
+            
+            currentPage = 1;
+            updateStats();
+            displayPage(1);
+        }
+        
+        function updateStats() {
+            document.getElementById('totalRumors').textContent = allRumors.length.toLocaleString();
+            document.getElementById('filteredRumors').textContent = filteredRumors.length.toLocaleString();
+            
+            if (allRumors.length > 0) {
+                const oldestDate = new Date(allRumors[allRumors.length - 1].archive_date);
+                const newestDate = new Date(allRumors[0].archive_date);
+                const years = Math.floor((newestDate - oldestDate) / (365 * 24 * 60 * 60 * 1000));
+                document.getElementById('dateRange').textContent = `${years}+`;
+            }
+        }
+        
+        function displayPage(page) {
+            currentPage = page;
+            const start = (page - 1) * rumorsPerPage;
+            const end = start + rumorsPerPage;
+            const pageRumors = filteredRumors.slice(start, end);
+            
+            const results = document.getElementById('results');
+            
+            if (pageRumors.length === 0) {
+                results.innerHTML = '<div class="no-results">No rumors found matching your search.</div>';
+                document.getElementById('pagination').innerHTML = '';
+                return;
+            }
+            
+            results.innerHTML = pageRumors.map(rumor => `
+                <div class="rumor-card">
+                    <div class="rumor-date">${rumor.date}</div>
+                    <div class="rumor-text">${rumor.text}</div>
+                    <div class="rumor-meta">
+                        ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
+                        ${rumor.source_url ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
+                    </div>
+                    <div class="rumor-tags">
+                        ${rumor.tags.map(tag => 
+                            `<span class="rumor-tag" onclick="searchTag('${tag.replace(/'/g, "\\'")}')">${tag}</span>`
+                        ).join('')}
+                    </div>
+                </div>
+            `).join('');
+            
+            createPagination();
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+        
+        function createPagination() {
+            const totalPages = Math.ceil(filteredRumors.length / rumorsPerPage);
+            const pagination = document.getElementById('pagination');
+            
+            if (totalPages <= 1) {
+                pagination.innerHTML = '';
+                return;
+            }
+            
+            let html = '';
+            
+            html += `<button onclick="displayPage(${currentPage - 1})" ${currentPage === 1 ? 'disabled' : ''}>← Prev</button>`;
+            
+            const maxButtons = 5;
+            let startPage = Math.max(1, currentPage - Math.floor(maxButtons / 2));
+            let endPage = Math.min(totalPages, startPage + maxButtons - 1);
+            
+            if (endPage - startPage < maxButtons - 1) {
+                startPage = Math.max(1, endPage - maxButtons + 1);
+            }
+            
+            if (startPage > 1) {
+                html += `<button onclick="displayPage(1)">1</button>`;
+                if (startPage > 2) html += `<span style="padding: 10px;">...</span>`;
+            }
+            
+            for (let i = startPage; i <= endPage; i++) {
+                html += `<button class="${i === currentPage ? 'active' : ''}" onclick="displayPage(${i})">${i}</button>`;
+            }
+            
+            if (endPage < totalPages) {
+                if (endPage < totalPages - 1) html += `<span style="padding: 10px;">...</span>`;
+                html += `<button onclick="displayPage(${totalPages})">${totalPages}</button>`;
+            }
+            
+            html += `<button onclick="displayPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next →</button>`;
+            
+            pagination.innerHTML = html;
+        }
+        
+        // Load on page load
+        loadData();
+    </script>
+</body>
+</html>
