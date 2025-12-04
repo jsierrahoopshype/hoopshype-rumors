@@ -54,11 +54,6 @@ def scrape_rumors_for_date(date_obj):
     password = os.environ.get('HOOPSHYPE_PASSWORD', 'hhpreview')
     auth = (username, password)
     
-    # Debug output for GitHub Actions
-    has_username = 'HOOPSHYPE_USERNAME' in os.environ
-    has_password = 'HOOPSHYPE_PASSWORD' in os.environ
-    print(f"[DEBUG] Secrets check - Username from env: {has_username}, Password from env: {has_password}")
-    
     # Today's rumors are at /rumors, past rumors are in /archive/
     if target_date == today:
         url = "http://preview.hoopshype.com/rumors"
@@ -67,13 +62,9 @@ def scrape_rumors_for_date(date_obj):
         year = date_obj.strftime('%Y')
         url = f"http://preview.hoopshype.com/archive/rumors/{year}/rumors-{date_str}.htm"
     
-    print(f"[DEBUG] Fetching URL: {url}")
-    
     try:
         response = requests.get(url, timeout=10, auth=auth)
-        print(f"[DEBUG] Response status: {response.status_code}, Content length: {len(response.content)} bytes")
         if response.status_code != 200:
-            print(f"[DEBUG] Non-200 response - check authentication!")
             return []
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -81,7 +72,6 @@ def scrape_rumors_for_date(date_obj):
         
         # Find all rumor blocks
         rumor_divs = soup.find_all('div', class_='rumor')
-        print(f"[DEBUG] Found {len(rumor_divs)} rumor divs in HTML")
         
         for idx, rumor_div in enumerate(rumor_divs):
             rumor_data = {
@@ -100,18 +90,6 @@ def scrape_rumors_for_date(date_obj):
             
             # Get rumor text - preview site uses 'rumortext' class, not 'rumor-content'
             rumor_text_p = rumor_div.find('p', class_='rumortext')
-            
-            # Debug first rumor only
-            if idx == 0:
-                print(f"[DEBUG] First rumor div HTML classes: {rumor_div.get('class')}")
-                print(f"[DEBUG] Found date span: {date_span is not None}")
-                print(f"[DEBUG] Found rumor-content paragraph: {rumor_text_p is not None}")
-                if rumor_text_p is None:
-                    # Try to find any <p> tag
-                    any_p = rumor_div.find('p')
-                    print(f"[DEBUG] Found any <p> tag: {any_p is not None}")
-                    if any_p:
-                        print(f"[DEBUG] First <p> tag classes: {any_p.get('class')}")
             
             if rumor_text_p:
                 # Get full text
@@ -134,23 +112,12 @@ def scrape_rumors_for_date(date_obj):
                     if outlet_text:
                         rumor_data['outlet'] = outlet_text
             
-            # Get tags
-            tags_div = rumor_div.find('div', class_='tags')
-            
-            # Debug first rumor only
-            if idx == 0:
-                print(f"[DEBUG] Found tags div: {tags_div is not None}")
-                if tags_div is None:
-                    # Try to find any div with links
-                    all_divs = rumor_div.find_all('div')
-                    print(f"[DEBUG] Total divs in rumor: {len(all_divs)}")
-                    for div in all_divs:
-                        div_class = div.get('class')
-                        if div_class:
-                            print(f"[DEBUG] Div class found: {div_class}")
+            # Get tags - preview site uses 'tag' class (singular)
+            tags_div = rumor_div.find('div', class_='tag')
             
             if tags_div:
-                tag_links = tags_div.find_all('a')
+                # Find all <a> tags with class="tag" inside the tag div
+                tag_links = tags_div.find_all('a', class_='tag')
                 rumor_data['tags'] = [tag.get_text(strip=True) for tag in tag_links]
             else:
                 # Try alternative: find all links at the end of the rumor div
@@ -162,10 +129,7 @@ def scrape_rumors_for_date(date_obj):
             
             if rumor_data['text']:
                 rumors.append(rumor_data)
-                if idx == 0:
-                    print(f"[DEBUG] First rumor has {len(rumor_data['tags'])} tags: {rumor_data['tags'][:5]}")
         
-        print(f"[DEBUG] Successfully extracted {len(rumors)} rumors from HTML")
         return rumors
         
     except Exception as e:
