@@ -469,6 +469,7 @@
             console.log('[TRENDING DEBUG] Recent rumors found (last 24h):', recentRumors.length);
             if (recentRumors.length > 0) {
                 console.log('[TRENDING DEBUG] Sample recent rumor date:', recentRumors[0].archive_date);
+                console.log('[TRENDING DEBUG] Sample rumor tags:', recentRumors[0].tags);
             }
             
             // Count tags
@@ -508,6 +509,10 @@
                     }
                 });
             });
+            
+            console.log('[TRENDING DEBUG] Player counts:', playerCounts);
+            console.log('[TRENDING DEBUG] Team counts:', teamCounts);
+            console.log('[TRENDING DEBUG] Topic counts:', topicCounts);
             
             // Sort and get top 5
             const topPlayers = Object.entries(playerCounts)
