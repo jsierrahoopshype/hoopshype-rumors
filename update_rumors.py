@@ -136,12 +136,34 @@ def scrape_rumors_for_date(date_obj):
             
             # Get tags
             tags_div = rumor_div.find('div', class_='tags')
+            
+            # Debug first rumor only
+            if idx == 0:
+                print(f"[DEBUG] Found tags div: {tags_div is not None}")
+                if tags_div is None:
+                    # Try to find any div with links
+                    all_divs = rumor_div.find_all('div')
+                    print(f"[DEBUG] Total divs in rumor: {len(all_divs)}")
+                    for div in all_divs:
+                        div_class = div.get('class')
+                        if div_class:
+                            print(f"[DEBUG] Div class found: {div_class}")
+            
             if tags_div:
                 tag_links = tags_div.find_all('a')
                 rumor_data['tags'] = [tag.get_text(strip=True) for tag in tag_links]
+            else:
+                # Try alternative: find all links at the end of the rumor div
+                all_links = rumor_div.find_all('a')
+                # Skip the first few links (they're source/outlet), take the rest as tags
+                if len(all_links) > 2:
+                    tag_links = all_links[2:]  # Skip source and outlet links
+                    rumor_data['tags'] = [tag.get_text(strip=True) for tag in tag_links if not tag.get('class')]
             
             if rumor_data['text']:
                 rumors.append(rumor_data)
+                if idx == 0:
+                    print(f"[DEBUG] First rumor has {len(rumor_data['tags'])} tags: {rumor_data['tags'][:5]}")
         
         print(f"[DEBUG] Successfully extracted {len(rumors)} rumors from HTML")
         return rumors
