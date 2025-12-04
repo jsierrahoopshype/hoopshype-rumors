@@ -413,6 +413,9 @@
                 
                 console.log(`Loaded ${allRumors.length} total rumors`);
                 
+                // Reverse to show newest first (most recent to oldest)
+                allRumors.reverse();
+                
                 // Calculate trending
                 calculateTrending();
                 
@@ -423,8 +426,21 @@
                 filteredRumors = allRumors;
                 displayPage(1);
                 
-                // Setup search
-                document.getElementById('searchBox').addEventListener('input', handleSearch);
+                // Setup search with debouncing
+                let searchTimeout;
+                const searchBox = document.getElementById('searchBox');
+                
+                searchBox.addEventListener('input', (e) => {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(handleSearch, 500); // Wait 500ms after typing stops
+                });
+                
+                searchBox.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        clearTimeout(searchTimeout);
+                        handleSearch();
+                    }
+                });
                 
             } catch (error) {
                 document.getElementById('results').innerHTML = 
@@ -475,8 +491,8 @@
                     else if (topicCounts.hasOwnProperty(tag)) {
                         topicCounts[tag]++;
                     }
-                    // Otherwise assume it's a player/person
-                    else {
+                    // Filter out non-player tags
+                    else if (tag !== 'Deaths') {
                         playerCounts[tag] = (playerCounts[tag] || 0) + 1;
                     }
                 });
@@ -576,10 +592,17 @@
                 return;
             }
             
-            results.innerHTML = pageRumors.map(rumor => `
+            results.innerHTML = pageRumors.map(rumor => {
+                // Remove outlet name from end of text if present
+                let cleanText = rumor.text;
+                if (rumor.outlet && cleanText.endsWith(rumor.outlet)) {
+                    cleanText = cleanText.slice(0, -rumor.outlet.length).trim();
+                }
+                
+                return `
                 <div class="rumor-card">
                     <div class="rumor-date">${rumor.date}</div>
-                    <div class="rumor-text">${rumor.text}</div>
+                    <div class="rumor-text">${cleanText}</div>
                     <div class="rumor-meta">
                         ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
                         ${rumor.source_url ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
@@ -590,7 +613,7 @@
                         ).join('')}
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             
             createPagination();
             window.scrollTo({top: 0, behavior: 'smooth'});
