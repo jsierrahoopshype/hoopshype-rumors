@@ -1,5 +1,9 @@
 name: Update HoopsHype Rumors
 
+# Grant permissions to write to repository
+permissions:
+  contents: write
+
 on:
   # Run 4 times daily at 7 AM, 11 AM, 5 PM, 11 PM Eastern Time
   schedule:
