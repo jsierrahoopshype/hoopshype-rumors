@@ -83,7 +83,7 @@ def scrape_rumors_for_date(date_obj):
         rumor_divs = soup.find_all('div', class_='rumor')
         print(f"[DEBUG] Found {len(rumor_divs)} rumor divs in HTML")
         
-        for rumor_div in rumor_divs:
+        for idx, rumor_div in enumerate(rumor_divs):
             rumor_data = {
                 'date': '',
                 'archive_date': date_obj.strftime('%Y-%m-%d'),
@@ -100,6 +100,19 @@ def scrape_rumors_for_date(date_obj):
             
             # Get rumor text
             rumor_text_p = rumor_div.find('p', class_='rumor-content')
+            
+            # Debug first rumor only
+            if idx == 0:
+                print(f"[DEBUG] First rumor div HTML classes: {rumor_div.get('class')}")
+                print(f"[DEBUG] Found date span: {date_span is not None}")
+                print(f"[DEBUG] Found rumor-content paragraph: {rumor_text_p is not None}")
+                if rumor_text_p is None:
+                    # Try to find any <p> tag
+                    any_p = rumor_div.find('p')
+                    print(f"[DEBUG] Found any <p> tag: {any_p is not None}")
+                    if any_p:
+                        print(f"[DEBUG] First <p> tag classes: {any_p.get('class')}")
+            
             if rumor_text_p:
                 # Get full text
                 rumor_data['text'] = rumor_text_p.get_text(strip=True)
