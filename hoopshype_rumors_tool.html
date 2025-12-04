@@ -413,8 +413,10 @@
                 
                 console.log(`Loaded ${allRumors.length} total rumors`);
                 
-                // Reverse to show newest first (most recent to oldest)
-                allRumors.reverse();
+                // Sort by date - newest to oldest
+                allRumors.sort((a, b) => {
+                    return new Date(b.archive_date) - new Date(a.archive_date);
+                });
                 
                 // Calculate trending
                 calculateTrending();
