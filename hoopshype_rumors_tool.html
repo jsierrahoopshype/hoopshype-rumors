@@ -381,7 +381,7 @@
         let currentPage = 1;
         const rumorsPerPage = 25;
         
-        // Load data (handles multi-part files)
+        // Load data with progressive loading (handles multi-part files)
         async function loadData() {
             try {
                 // Try loading index for multi-part files
@@ -393,40 +393,97 @@
                 }
                 
                 if (indexResponse && indexResponse.ok) {
-                    // Multi-part mode
+                    // Multi-part mode with progressive loading
                     const index = await indexResponse.json();
-                    console.log(`Loading ${index.num_files} files...`);
+                    const files = index.files;
                     
-                    allRumors = [];
-                    for (let i = 0; i < index.files.length; i++) {
-                        const filename = index.files[i];
-                        console.log(`Loading ${filename}...`);
-                        const partResponse = await fetch(filename);
-                        const partData = await partResponse.json();
-                        allRumors = allRumors.concat(partData);
+                    console.log(`Progressive loading: ${files.length} files total`);
+                    
+                    // PHASE 1: Load most recent file first (part5)
+                    const recentFile = files[files.length - 1]; // part5 is last in array
+                    console.log(`Loading most recent data: ${recentFile}...`);
+                    
+                    const recentResponse = await fetch(recentFile);
+                    const recentData = await recentResponse.json();
+                    allRumors = recentData;
+                    
+                    // Sort by date - newest to oldest
+                    allRumors.sort((a, b) => {
+                        return new Date(b.archive_date) - new Date(a.archive_date);
+                    });
+                    
+                    console.log(`Loaded ${allRumors.length} recent rumors - DISPLAYING NOW`);
+                    
+                    // Calculate trending and display immediately
+                    calculateTrending();
+                    updateStats();
+                    filteredRumors = allRumors;
+                    displayPage(1);
+                    
+                    // Show loading indicator for background loading
+                    document.getElementById('resultsHeader').innerHTML = 
+                        `<span style="color: #e74c3c;">●</span> Loading older rumors in background... (${allRumors.length.toLocaleString()} available now)`;
+                    
+                    // PHASE 2: Load remaining files in background
+                    const remainingFiles = files.slice(0, -1); // Everything except part5
+                    
+                    for (let i = 0; i < remainingFiles.length; i++) {
+                        const filename = remainingFiles[i];
+                        console.log(`Background loading: ${filename}...`);
+                        
+                        try {
+                            const partResponse = await fetch(filename);
+                            const partData = await partResponse.json();
+                            
+                            // Append to existing data
+                            allRumors = allRumors.concat(partData);
+                            
+                            // Re-sort
+                            allRumors.sort((a, b) => {
+                                return new Date(b.archive_date) - new Date(a.archive_date);
+                            });
+                            
+                            // Update display
+                            updateStats();
+                            if (document.getElementById('searchBox').value.trim() === '') {
+                                filteredRumors = allRumors;
+                                if (currentPage === 1) {
+                                    displayPage(1); // Refresh first page if user is still there
+                                }
+                            }
+                            
+                            // Update header
+                            const remaining = remainingFiles.length - i - 1;
+                            if (remaining > 0) {
+                                document.getElementById('resultsHeader').innerHTML = 
+                                    `<span style="color: #e74c3c;">●</span> Loading... ${remaining} files remaining (${allRumors.length.toLocaleString()} rumors available)`;
+                            } else {
+                                document.getElementById('resultsHeader').textContent = 'All Rumors';
+                                console.log(`✓ All data loaded! Total: ${allRumors.length} rumors`);
+                            }
+                            
+                        } catch (error) {
+                            console.error(`Error loading ${filename}:`, error);
+                        }
                     }
+                    
                 } else {
-                    // Single file mode
+                    // Single file mode (fallback)
                     const response = await fetch('hoopshype_all_rumors.json');
                     allRumors = await response.json();
+                    
+                    // Sort by date - newest to oldest
+                    allRumors.sort((a, b) => {
+                        return new Date(b.archive_date) - new Date(a.archive_date);
+                    });
+                    
+                    console.log(`Loaded ${allRumors.length} total rumors`);
+                    
+                    calculateTrending();
+                    updateStats();
+                    filteredRumors = allRumors;
+                    displayPage(1);
                 }
-                
-                console.log(`Loaded ${allRumors.length} total rumors`);
-                
-                // Sort by date - newest to oldest
-                allRumors.sort((a, b) => {
-                    return new Date(b.archive_date) - new Date(a.archive_date);
-                });
-                
-                // Calculate trending
-                calculateTrending();
-                
-                // Update stats
-                updateStats();
-                
-                // Show all rumors initially
-                filteredRumors = allRumors;
-                displayPage(1);
                 
                 // Setup search with debouncing
                 let searchTimeout;
@@ -456,21 +513,11 @@
             const now = new Date();
             const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
             
-            console.log('[TRENDING DEBUG] Current time:', now.toISOString());
-            console.log('[TRENDING DEBUG] Looking for rumors after:', yesterday.toISOString());
-            console.log('[TRENDING DEBUG] Total rumors loaded:', allRumors.length);
-            
             // Filter last 24 hours
             const recentRumors = allRumors.filter(r => {
                 const rumorDate = new Date(r.archive_date);
                 return rumorDate >= yesterday;
             });
-            
-            console.log('[TRENDING DEBUG] Recent rumors found (last 24h):', recentRumors.length);
-            if (recentRumors.length > 0) {
-                console.log('[TRENDING DEBUG] Sample recent rumor date:', recentRumors[0].archive_date);
-                console.log('[TRENDING DEBUG] Sample rumor tags:', recentRumors[0].tags);
-            }
             
             // Count tags
             const playerCounts = {};
@@ -510,10 +557,6 @@
                 });
             });
             
-            console.log('[TRENDING DEBUG] Player counts:', playerCounts);
-            console.log('[TRENDING DEBUG] Team counts:', teamCounts);
-            console.log('[TRENDING DEBUG] Topic counts:', topicCounts);
-            
             // Sort and get top 5
             const topPlayers = Object.entries(playerCounts)
                 .sort((a, b) => b[1] - a[1])
@@ -526,10 +569,6 @@
             const topTopics = Object.entries(topicCounts)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 5);
-            
-            console.log('[TRENDING DEBUG] Top players found:', topPlayers.length);
-            console.log('[TRENDING DEBUG] Top teams found:', topTeams.length);
-            console.log('[TRENDING DEBUG] Top topics found:', topTopics.length);
             
             // Display trending
             displayTrending('trendingPlayers', topPlayers);
