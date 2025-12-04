@@ -456,11 +456,20 @@
             const now = new Date();
             const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
             
+            console.log('[TRENDING DEBUG] Current time:', now.toISOString());
+            console.log('[TRENDING DEBUG] Looking for rumors after:', yesterday.toISOString());
+            console.log('[TRENDING DEBUG] Total rumors loaded:', allRumors.length);
+            
             // Filter last 24 hours
             const recentRumors = allRumors.filter(r => {
                 const rumorDate = new Date(r.archive_date);
                 return rumorDate >= yesterday;
             });
+            
+            console.log('[TRENDING DEBUG] Recent rumors found (last 24h):', recentRumors.length);
+            if (recentRumors.length > 0) {
+                console.log('[TRENDING DEBUG] Sample recent rumor date:', recentRumors[0].archive_date);
+            }
             
             // Count tags
             const playerCounts = {};
@@ -512,6 +521,10 @@
             const topTopics = Object.entries(topicCounts)
                 .sort((a, b) => b[1] - a[1])
                 .slice(0, 5);
+            
+            console.log('[TRENDING DEBUG] Top players found:', topPlayers.length);
+            console.log('[TRENDING DEBUG] Top teams found:', topTeams.length);
+            console.log('[TRENDING DEBUG] Top topics found:', topTopics.length);
             
             // Display trending
             displayTrending('trendingPlayers', topPlayers);
