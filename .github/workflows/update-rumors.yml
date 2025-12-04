@@ -50,7 +50,7 @@ jobs:
       run: |
         git config --local user.email "github-actions[bot]@users.noreply.github.com"
         git config --local user.name "github-actions[bot]"
-        git add hoopshype_rumors_part5.json rumors_index.json
+        git add hoopshype_rumors_part*.json rumors_index.json
         git commit -m "Auto-update: Added new rumors from $(date +'%Y-%m-%d')"
         git push
       env:
