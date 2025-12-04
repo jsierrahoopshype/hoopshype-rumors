@@ -54,6 +54,11 @@ def scrape_rumors_for_date(date_obj):
     password = os.environ.get('HOOPSHYPE_PASSWORD', 'hhpreview')
     auth = (username, password)
     
+    # Debug output for GitHub Actions
+    has_username = 'HOOPSHYPE_USERNAME' in os.environ
+    has_password = 'HOOPSHYPE_PASSWORD' in os.environ
+    print(f"[DEBUG] Secrets check - Username from env: {has_username}, Password from env: {has_password}")
+    
     # Today's rumors are at /rumors, past rumors are in /archive/
     if target_date == today:
         url = "http://preview.hoopshype.com/rumors"
@@ -62,9 +67,13 @@ def scrape_rumors_for_date(date_obj):
         year = date_obj.strftime('%Y')
         url = f"http://preview.hoopshype.com/archive/rumors/{year}/rumors-{date_str}.htm"
     
+    print(f"[DEBUG] Fetching URL: {url}")
+    
     try:
         response = requests.get(url, timeout=10, auth=auth)
+        print(f"[DEBUG] Response status: {response.status_code}, Content length: {len(response.content)} bytes")
         if response.status_code != 200:
+            print(f"[DEBUG] Non-200 response - check authentication!")
             return []
         
         soup = BeautifulSoup(response.content, 'html.parser')
@@ -72,6 +81,7 @@ def scrape_rumors_for_date(date_obj):
         
         # Find all rumor blocks
         rumor_divs = soup.find_all('div', class_='rumor')
+        print(f"[DEBUG] Found {len(rumor_divs)} rumor divs in HTML")
         
         for rumor_div in rumor_divs:
             rumor_data = {
