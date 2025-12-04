@@ -14,21 +14,35 @@ import sys
 import os
 
 def load_latest_date():
-    """Find the most recent date in our database"""
-    try:
-        with open('hoopshype_rumors_part5.json', 'r', encoding='utf-8') as f:
-            rumors = json.load(f)
-            if rumors:
-                # Get the most recent archive_date
-                latest = max(rumors, key=lambda x: x['archive_date'])
-                return datetime.fromisoformat(latest['archive_date'])
-    except FileNotFoundError:
-        print("Database file not found, starting from today")
-    except Exception as e:
-        print(f"Error loading database: {e}")
+    """Find the most recent date in our database by checking all parts"""
+    latest_date = None
     
-    # Default to yesterday if we can't load
-    return datetime.now() - timedelta(days=1)
+    # Check all 5 parts since data is not sorted by date
+    for part_num in range(1, 6):
+        filename = f'hoopshype_rumors_part{part_num}.json'
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                rumors = json.load(f)
+                if rumors:
+                    # Get the most recent archive_date from this part
+                    part_latest = max(rumors, key=lambda x: x['archive_date'])
+                    part_date = datetime.fromisoformat(part_latest['archive_date'])
+                    
+                    if latest_date is None or part_date > latest_date:
+                        latest_date = part_date
+                        
+        except FileNotFoundError:
+            print(f"Warning: {filename} not found")
+            continue
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            continue
+    
+    if latest_date is None:
+        print("No database files found, starting from yesterday")
+        return datetime.now() - timedelta(days=1)
+    
+    return latest_date
 
 def scrape_rumors_for_date(date_obj):
     """Scrape all rumors from a specific date"""
@@ -102,7 +116,7 @@ def scrape_rumors_for_date(date_obj):
         return rumors
         
     except Exception as e:
-        print(f"Error scraping {url}: {e}")
+        print(f"Error scraping {date_str}: {e}")
         return []
 
 def main():
@@ -149,7 +163,7 @@ def main():
         print(f"{'='*60}")
         
         try:
-            with open('hoopshype_rumors_part5.json', 'r', encoding='utf-8') as f:
+            with open('hoopshype_rumors_part1.json', 'r', encoding='utf-8') as f:
                 existing_rumors = json.load(f)
         except FileNotFoundError:
             existing_rumors = []
@@ -158,7 +172,7 @@ def main():
         existing_rumors.extend(new_rumors)
         
         # Save updated database
-        with open('hoopshype_rumors_part5.json', 'w', encoding='utf-8') as f:
+        with open('hoopshype_rumors_part1.json', 'w', encoding='utf-8') as f:
             json.dump(existing_rumors, f, ensure_ascii=False, indent=2)
         
         print(f"\n✅ Successfully appended {len(new_rumors)} new rumors!")
