@@ -307,6 +307,60 @@
                 gap: 20px;
             }
         }
+        
+        /* Related Tags Section */
+        .related-tags-section {
+            background: white;
+            padding: 25px 30px;
+            border-radius: 8px;
+            margin-top: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .related-tags-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .related-tags-hint {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .related-tag-btn {
+            display: inline-block;
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        
+        .related-tag-btn:hover {
+            background: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
+        }
+        
+        .related-tag-name {
+            font-weight: bold;
+        }
+        
+        .related-tag-count {
+            color: #999;
+            font-size: 13px;
+            margin-left: 5px;
+        }
+        
+        .related-tag-btn:hover .related-tag-count {
+            color: rgba(255,255,255,0.8);
+        }
     </style>
 </head>
 <body>
@@ -373,6 +427,13 @@
         
         <!-- Pagination -->
         <div class="pagination" id="pagination"></div>
+        
+        <!-- Related Tags -->
+        <div class="related-tags-section" id="relatedTagsSection" style="display: none;">
+            <div class="related-tags-header" id="relatedTagsHeader">Related Tags</div>
+            <div class="related-tags-hint" id="relatedTagsHint"></div>
+            <div id="relatedTagsContent"></div>
+        </div>
     </div>
     
     <script>
@@ -597,12 +658,94 @@
             handleSearch();
         }
         
+        function calculateRelatedTags(searchTerms) {
+            // Don't show if no search or no results
+            if (!searchTerms || searchTerms.length === 0 || filteredRumors.length === 0) {
+                hideRelatedTags();
+                return;
+            }
+            
+            // Count all tags in filtered results
+            const tagCounts = {};
+            
+            filteredRumors.forEach(rumor => {
+                rumor.tags.forEach(tag => {
+                    // Skip if this tag is already in the search
+                    const tagLower = tag.toLowerCase();
+                    const isSearchTerm = searchTerms.some(term => tagLower.includes(term));
+                    
+                    if (!isSearchTerm) {
+                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    }
+                });
+            });
+            
+            // Get top 10 related tags
+            const relatedTags = Object.entries(tagCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            if (relatedTags.length > 0) {
+                displayRelatedTags(relatedTags, searchTerms);
+            } else {
+                hideRelatedTags();
+            }
+        }
+        
+        function displayRelatedTags(tags, searchTerms) {
+            const section = document.getElementById('relatedTagsSection');
+            const header = document.getElementById('relatedTagsHeader');
+            const hint = document.getElementById('relatedTagsHint');
+            const content = document.getElementById('relatedTagsContent');
+            
+            // Update header based on number of search terms
+            if (searchTerms.length === 1) {
+                header.textContent = 'Related Tags';
+                hint.textContent = 'Click to refine your search with these related topics:';
+            } else {
+                header.textContent = 'Smart Tag Combinations';
+                hint.textContent = `People searching for "${searchTerms.join(' + ')}" also looked at:`;
+            }
+            
+            // Display tag buttons
+            content.innerHTML = tags.map(([tag, count]) => `
+                <div class="related-tag-btn" onclick="addTagToSearch('${tag.replace(/'/g, "\\'")}')">
+                    <span class="related-tag-name">${tag}</span>
+                    <span class="related-tag-count">(${count})</span>
+                </div>
+            `).join('');
+            
+            section.style.display = 'block';
+        }
+        
+        function hideRelatedTags() {
+            document.getElementById('relatedTagsSection').style.display = 'none';
+        }
+        
+        function addTagToSearch(tag) {
+            const searchBox = document.getElementById('searchBox');
+            const currentSearch = searchBox.value.trim();
+            
+            // Add tag to current search
+            if (currentSearch) {
+                searchBox.value = currentSearch + ', ' + tag;
+            } else {
+                searchBox.value = tag;
+            }
+            
+            handleSearch();
+            
+            // Scroll to top to see results
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+        
         function handleSearch() {
             const query = document.getElementById('searchBox').value.trim().toLowerCase();
             
             if (!query) {
                 filteredRumors = allRumors;
                 document.getElementById('resultsHeader').textContent = 'All Rumors';
+                hideRelatedTags();
             } else {
                 // Split by commas or spaces
                 const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
@@ -618,6 +761,9 @@
                 
                 document.getElementById('resultsHeader').textContent = 
                     `Search Results for "${query}" (${filteredRumors.length.toLocaleString()} rumors)`;
+                
+                // Calculate and show related tags
+                calculateRelatedTags(searchTerms);
             }
             
             currentPage = 1;
