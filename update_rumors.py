@@ -94,12 +94,12 @@ def scrape_rumors_for_date(date_obj):
             }
             
             # Get display date
-            date_span = rumor_div.find('span', class_='rumorDate')
+            date_span = rumor_div.find('span', class_='date')
             if date_span:
                 rumor_data['date'] = date_span.get_text(strip=True)
             
-            # Get rumor text
-            rumor_text_p = rumor_div.find('p', class_='rumor-content')
+            # Get rumor text - preview site uses 'rumortext' class, not 'rumor-content'
+            rumor_text_p = rumor_div.find('p', class_='rumortext')
             
             # Debug first rumor only
             if idx == 0:
@@ -117,15 +117,22 @@ def scrape_rumors_for_date(date_obj):
                 # Get full text
                 rumor_data['text'] = rumor_text_p.get_text(strip=True)
                 
-                # Get source URL
-                quote_link = rumor_text_p.find('a', class_='quote')
-                if quote_link:
-                    rumor_data['source_url'] = quote_link.get('href', '')
+                # Get all links in the paragraph
+                all_links = rumor_text_p.find_all('a')
                 
-                # Get outlet
-                media_link = rumor_text_p.find('a', class_='rumormedia')
-                if media_link:
-                    rumor_data['outlet'] = media_link.get_text(strip=True)
+                # First link is usually the quote/source
+                if len(all_links) > 0:
+                    first_link = all_links[0]
+                    href = first_link.get('href', '')
+                    if href and not href.startswith('/rumors'):
+                        rumor_data['source_url'] = href
+                
+                # Last link is often the outlet/media source
+                if len(all_links) > 1:
+                    last_link = all_links[-1]
+                    outlet_text = last_link.get_text(strip=True)
+                    if outlet_text:
+                        rumor_data['outlet'] = outlet_text
             
             # Get tags
             tags_div = rumor_div.find('div', class_='tags')
@@ -136,10 +143,11 @@ def scrape_rumors_for_date(date_obj):
             if rumor_data['text']:
                 rumors.append(rumor_data)
         
+        print(f"[DEBUG] Successfully extracted {len(rumors)} rumors from HTML")
         return rumors
         
     except Exception as e:
-        print(f"Error scraping {date_str}: {e}")
+        print(f"Error scraping {url}: {e}")
         return []
 
 def main():
