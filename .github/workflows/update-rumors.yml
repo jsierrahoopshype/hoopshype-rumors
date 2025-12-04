@@ -1,0 +1,65 @@
+name: Update HoopsHype Rumors
+
+on:
+  # Run 4 times daily at 7 AM, 11 AM, 5 PM, 11 PM Eastern Time
+  schedule:
+    - cron: '0 12 * * *'  # 7 AM EST = 12:00 PM UTC
+    - cron: '0 16 * * *'  # 11 AM EST = 4:00 PM UTC  
+    - cron: '0 22 * * *'  # 5 PM EST = 10:00 PM UTC
+    - cron: '0 4 * * *'   # 11 PM EST = 4:00 AM UTC (next day)
+  
+  # Allow manual trigger from Actions tab
+  workflow_dispatch:
+
+jobs:
+  update-rumors:
+    runs-on: ubuntu-latest
+    
+    steps:
+    - name: Checkout repository
+      uses: actions/checkout@v3
+    
+    - name: Set up Python
+      uses: actions/setup-python@v4
+      with:
+        python-version: '3.10'
+    
+    - name: Install dependencies
+      run: |
+        python -m pip install --upgrade pip
+        pip install requests beautifulsoup4
+    
+    - name: Run scraper
+      env:
+        HOOPSHYPE_USERNAME: ${{ secrets.HOOPSHYPE_USERNAME }}
+        HOOPSHYPE_PASSWORD: ${{ secrets.HOOPSHYPE_PASSWORD }}
+      run: |
+        python update_rumors.py
+    
+    - name: Check for changes
+      id: check_changes
+      run: |
+        if git diff --quiet; then
+          echo "changes=false" >> $GITHUB_OUTPUT
+        else
+          echo "changes=true" >> $GITHUB_OUTPUT
+        fi
+    
+    - name: Commit and push changes
+      if: steps.check_changes.outputs.changes == 'true'
+      run: |
+        git config --local user.email "github-actions[bot]@users.noreply.github.com"
+        git config --local user.name "github-actions[bot]"
+        git add hoopshype_rumors_part5.json rumors_index.json
+        git commit -m "Auto-update: Added new rumors from $(date +'%Y-%m-%d')"
+        git push
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    
+    - name: Summary
+      if: steps.check_changes.outputs.changes == 'true'
+      run: echo "✅ Successfully updated rumors database!"
+    
+    - name: No updates
+      if: steps.check_changes.outputs.changes == 'false'
+      run: echo "ℹ️ No new rumors found"
