@@ -798,22 +798,33 @@
             }
             
             results.innerHTML = pageRumors.map(rumor => {
-                // Remove outlet name from end of text if present
-                let cleanText = rumor.text;
-                if (rumor.outlet && cleanText.endsWith(rumor.outlet)) {
-                    cleanText = cleanText.slice(0, -rumor.outlet.length).trim();
+                // Process text to show quoted parts as hyperlinks
+                let displayText = rumor.text;
+                
+                // Remove outlet name from end if present
+                if (rumor.outlet && displayText.endsWith(rumor.outlet)) {
+                    displayText = displayText.slice(0, -rumor.outlet.length).trim();
+                }
+                
+                // If there's a quote and source URL, make the quote clickable
+                if (rumor.quote && rumor.source_url && displayText.includes(rumor.quote)) {
+                    const quotedLink = `<a href="${rumor.source_url}" target="_blank" class="quote-link" style="color: #e74c3c; text-decoration: none; border-bottom: 1px dotted #e74c3c;">"${rumor.quote}"</a>`;
+                    // Replace the quote in the text with hyperlinked version
+                    // Handle both with and without quotes around it
+                    displayText = displayText.replace(`"${rumor.quote}"`, quotedLink);
+                    displayText = displayText.replace(rumor.quote, quotedLink);
                 }
                 
                 return `
                 <div class="rumor-card">
                     <div class="rumor-date">${rumor.date}</div>
-                    <div class="rumor-text">${cleanText}</div>
+                    <div class="rumor-text">${displayText}</div>
                     <div class="rumor-meta">
                         ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
-                        ${rumor.source_url ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
+                        ${rumor.source_url && !rumor.quote ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
                     </div>
                     <div class="rumor-tags">
-                        ${rumor.tags.map(tag => 
+                        ${(rumor.tags || []).map(tag => 
                             `<span class="rumor-tag" onclick="searchTag('${tag.replace(/'/g, "\\'")}')">${tag}</span>`
                         ).join('')}
                     </div>
