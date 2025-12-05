@@ -78,6 +78,7 @@ def scrape_rumors_for_date(date_obj):
                 'date': '',
                 'archive_date': date_obj.strftime('%Y-%m-%d'),
                 'text': '',
+                'quote': '',
                 'outlet': '',
                 'source_url': '',
                 'tags': []
@@ -95,11 +96,19 @@ def scrape_rumors_for_date(date_obj):
                 # Get full text
                 rumor_data['text'] = rumor_text_p.get_text(strip=True)
                 
+                # Get the quoted text specifically (will be hyperlinked)
+                quote_link = rumor_text_p.find('a', class_='quote')
+                if quote_link:
+                    rumor_data['quote'] = quote_link.get_text(strip=True)
+                    rumor_data['source_url'] = quote_link.get('href', '')
+                else:
+                    rumor_data['quote'] = ''
+                
                 # Get all links in the paragraph
                 all_links = rumor_text_p.find_all('a')
                 
-                # First link is usually the quote/source
-                if len(all_links) > 0:
+                # If no quote link was found, use first link as source
+                if not rumor_data['source_url'] and len(all_links) > 0:
                     first_link = all_links[0]
                     href = first_link.get('href', '')
                     if href and not href.startswith('/rumors'):
@@ -111,6 +120,9 @@ def scrape_rumors_for_date(date_obj):
                     outlet_text = last_link.get_text(strip=True)
                     if outlet_text:
                         rumor_data['outlet'] = outlet_text
+                elif len(all_links) == 1 and not rumor_data['quote']:
+                    # If only one link and it's not a quote, it's probably the outlet
+                    rumor_data['outlet'] = all_links[0].get_text(strip=True)
             
             # Get tags - preview site uses 'tag' class (singular)
             tags_div = rumor_div.find('div', class_='tag')
