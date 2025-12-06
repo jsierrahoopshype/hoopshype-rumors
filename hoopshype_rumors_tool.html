@@ -723,11 +723,19 @@
                 return;
             }
             
-            // Count all tags in filtered results
+            // Get date from 12 months ago
+            const now = new Date();
+            const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+            const oneYearAgoStr = oneYearAgo.toISOString().split('T')[0];
+            
+            // Filter to only recent rumors (last 12 months)
+            const recentFilteredRumors = filteredRumors.filter(r => r.archive_date >= oneYearAgoStr);
+            
+            // Count all tags in recent filtered results
             const tagCounts = {};
             
-            filteredRumors.forEach(rumor => {
-                rumor.tags.forEach(tag => {
+            recentFilteredRumors.forEach(rumor => {
+                (rumor.tags || []).forEach(tag => {
                     // Skip if this tag is already in the search
                     const tagLower = tag.toLowerCase();
                     const isSearchTerm = searchTerms.some(term => tagLower.includes(term));
@@ -744,13 +752,13 @@
                 .slice(0, 10);
             
             if (relatedTags.length > 0) {
-                displayRelatedTags(relatedTags, searchTerms);
+                displayRelatedTags(relatedTags, searchTerms, recentFilteredRumors.length);
             } else {
                 hideRelatedTags();
             }
         }
         
-        function displayRelatedTags(tags, searchTerms) {
+        function displayRelatedTags(tags, searchTerms, recentCount) {
             const section = document.getElementById('relatedTagsSection');
             const header = document.getElementById('relatedTagsHeader');
             const hint = document.getElementById('relatedTagsHint');
@@ -758,11 +766,11 @@
             
             // Update header based on number of search terms
             if (searchTerms.length === 1) {
-                header.textContent = 'Related Tags';
-                hint.textContent = 'Click to refine your search with these related topics:';
+                header.textContent = 'Related Tags (Last 12 Months)';
+                hint.textContent = `Based on ${recentCount.toLocaleString()} recent rumors. Click to refine your search:`;
             } else {
-                header.textContent = 'Smart Tag Combinations';
-                hint.textContent = `People searching for "${searchTerms.join(' + ')}" also looked at:`;
+                header.textContent = 'Smart Tag Combinations (Last 12 Months)';
+                hint.textContent = `People searching for "${searchTerms.join(' + ')}" recently also looked at:`;
             }
             
             // Display tag buttons
@@ -1024,23 +1032,32 @@
                 monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
             });
             
-            // Sort by date and get last 36 months max
+            // Sort by date - show ALL months from first to last
             const sortedMonths = Object.keys(monthCounts).sort();
-            const displayMonths = sortedMonths.slice(-36);
             
-            const labels = displayMonths.map(m => {
+            // Find first and last date for the header
+            const firstMonth = sortedMonths[0];
+            const lastMonth = sortedMonths[sortedMonths.length - 1];
+            
+            const labels = sortedMonths.map(m => {
                 const [year, month] = m.split('-');
                 const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
                                    'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 return `${monthNames[parseInt(month) - 1]} ${year.slice(-2)}`;
             });
             
-            const data = displayMonths.map(m => monthCounts[m]);
+            const data = sortedMonths.map(m => monthCounts[m]);
+            
+            // Format first appearance date
+            const [firstYear, firstMonthNum] = firstMonth.split('-');
+            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
+                               'July', 'August', 'September', 'October', 'November', 'December'];
+            const firstAppearance = `${monthNames[parseInt(firstMonthNum) - 1]} ${firstYear}`;
             
             // Update chart header
             const searchText = searchTerms.join(' + ');
             document.getElementById('chartHeader').textContent = 
-                `📊 "${searchText}" Mentions Over Time (${filteredRumors.length.toLocaleString()} total)`;
+                `📊 "${searchText}" - ${filteredRumors.length.toLocaleString()} mentions since ${firstAppearance}`;
             
             // Show section
             document.getElementById('chartSection').style.display = 'block';
@@ -1063,7 +1080,7 @@
                         backgroundColor: 'rgba(231, 76, 60, 0.1)',
                         fill: true,
                         tension: 0.3,
-                        pointRadius: 2,
+                        pointRadius: sortedMonths.length > 60 ? 0 : 2,
                         pointHoverRadius: 5
                     }]
                 },
@@ -1091,7 +1108,9 @@
                         },
                         x: {
                             ticks: {
-                                maxTicksLimit: 12
+                                maxTicksLimit: 15,
+                                maxRotation: 45,
+                                minRotation: 45
                             }
                         }
                     }
