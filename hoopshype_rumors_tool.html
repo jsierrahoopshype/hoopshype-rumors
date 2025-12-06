@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HoopsHype Rumors Archive - 15 Years of NBA Rumors</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <style>
         * {
             margin: 0;
@@ -361,6 +362,54 @@
         .related-tag-btn:hover .related-tag-count {
             color: rgba(255,255,255,0.8);
         }
+        
+        /* Historical Chart Section */
+        .chart-section {
+            background: white;
+            padding: 25px 30px;
+            border-radius: 8px;
+            margin-top: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: none;
+        }
+        
+        .chart-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .chart-container {
+            position: relative;
+            height: 300px;
+            width: 100%;
+        }
+        
+        /* Sentiment Indicators */
+        .sentiment-indicator {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 11px;
+            font-weight: bold;
+            margin-left: 10px;
+        }
+        
+        .sentiment-positive {
+            background: #d4edda;
+            color: #155724;
+        }
+        
+        .sentiment-negative {
+            background: #f8d7da;
+            color: #721c24;
+        }
+        
+        .sentiment-neutral {
+            background: #e2e3e5;
+            color: #383d41;
+        }
     </style>
 </head>
 <body>
@@ -433,6 +482,14 @@
             <div class="related-tags-header" id="relatedTagsHeader">Related Tags</div>
             <div class="related-tags-hint" id="relatedTagsHint"></div>
             <div id="relatedTagsContent"></div>
+        </div>
+        
+        <!-- Historical Chart -->
+        <div class="chart-section" id="chartSection">
+            <div class="chart-header" id="chartHeader">📊 Mentions Over Time</div>
+            <div class="chart-container">
+                <canvas id="historyChart"></canvas>
+            </div>
         </div>
     </div>
     
@@ -747,6 +804,7 @@
                 filteredRumors = allRumors;
                 document.getElementById('resultsHeader').textContent = 'All Rumors';
                 hideRelatedTags();
+                hideChart();
             } else {
                 // Split by commas or spaces
                 const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
@@ -765,6 +823,9 @@
                 
                 // Calculate and show related tags
                 calculateRelatedTags(searchTerms);
+                
+                // Generate historical chart
+                generateHistoricalChart(searchTerms);
             }
             
             currentPage = 1;
@@ -829,9 +890,13 @@
                     }
                 }
                 
+                // Analyze sentiment
+                const sentiment = analyzeSentiment(rumor.text);
+                const sentimentLabel = getSentimentLabel(sentiment);
+                
                 return `
                 <div class="rumor-card">
-                    <div class="rumor-date">${displayDate || ''}</div>
+                    <div class="rumor-date">${displayDate || ''}${sentimentLabel}</div>
                     <div class="rumor-text">${displayText}</div>
                     <div class="rumor-meta">
                         ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
@@ -887,6 +952,159 @@
             html += `<button onclick="displayPage(${currentPage + 1})" ${currentPage === totalPages ? 'disabled' : ''}>Next →</button>`;
             
             pagination.innerHTML = html;
+        }
+        
+        // Sentiment Analysis
+        function analyzeSentiment(text) {
+            const lowerText = text.toLowerCase();
+            
+            const positiveWords = [
+                'sign', 'signed', 'signing', 'extension', 'extend', 'extended',
+                'agree', 'agreed', 'agreement', 'deal', 'commit', 'committed',
+                'happy', 'excited', 'thrilled', 'love', 'loves', 'winning',
+                'win', 'won', 'victory', 'champion', 'championship', 'mvp',
+                'all-star', 'allstar', 'breakout', 'impressive', 'dominant',
+                'healthy', 'return', 'returning', 'comeback', 'upgrade',
+                'interested', 'pursuing', 'target', 'prioritize', 'want', 'wants'
+            ];
+            
+            const negativeWords = [
+                'injury', 'injured', 'hurt', 'out', 'miss', 'missed', 'missing',
+                'trade', 'traded', 'trading', 'demand', 'demanded', 'request',
+                'unhappy', 'frustrated', 'angry', 'upset', 'disappointed',
+                'cut', 'waive', 'waived', 'release', 'released', 'fire', 'fired',
+                'lose', 'lost', 'losing', 'struggle', 'struggling', 'decline',
+                'torn', 'acl', 'mcl', 'achilles', 'surgery', 'rehab',
+                'suspend', 'suspended', 'suspension', 'fine', 'fined',
+                'retire', 'retiring', 'retirement', 'leaving', 'leave', 'exit'
+            ];
+            
+            let positiveScore = 0;
+            let negativeScore = 0;
+            
+            positiveWords.forEach(word => {
+                if (lowerText.includes(word)) positiveScore++;
+            });
+            
+            negativeWords.forEach(word => {
+                if (lowerText.includes(word)) negativeScore++;
+            });
+            
+            if (positiveScore > negativeScore + 1) return 'positive';
+            if (negativeScore > positiveScore + 1) return 'negative';
+            return 'neutral';
+        }
+        
+        function getSentimentLabel(sentiment) {
+            switch (sentiment) {
+                case 'positive':
+                    return '<span class="sentiment-indicator sentiment-positive">📈 Positive</span>';
+                case 'negative':
+                    return '<span class="sentiment-indicator sentiment-negative">📉 Negative</span>';
+                default:
+                    return '';  // Don't show neutral to reduce clutter
+            }
+        }
+        
+        // Historical Chart
+        let historyChart = null;
+        
+        function generateHistoricalChart(searchTerms) {
+            if (!searchTerms || searchTerms.length === 0 || filteredRumors.length < 10) {
+                document.getElementById('chartSection').style.display = 'none';
+                return;
+            }
+            
+            // Group by month
+            const monthCounts = {};
+            
+            filteredRumors.forEach(rumor => {
+                const date = rumor.archive_date;
+                const monthKey = date.substring(0, 7); // YYYY-MM
+                monthCounts[monthKey] = (monthCounts[monthKey] || 0) + 1;
+            });
+            
+            // Sort by date and get last 36 months max
+            const sortedMonths = Object.keys(monthCounts).sort();
+            const displayMonths = sortedMonths.slice(-36);
+            
+            const labels = displayMonths.map(m => {
+                const [year, month] = m.split('-');
+                const monthNames = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 
+                                   'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return `${monthNames[parseInt(month) - 1]} ${year.slice(-2)}`;
+            });
+            
+            const data = displayMonths.map(m => monthCounts[m]);
+            
+            // Update chart header
+            const searchText = searchTerms.join(' + ');
+            document.getElementById('chartHeader').textContent = 
+                `📊 "${searchText}" Mentions Over Time (${filteredRumors.length.toLocaleString()} total)`;
+            
+            // Show section
+            document.getElementById('chartSection').style.display = 'block';
+            
+            // Destroy old chart if exists
+            if (historyChart) {
+                historyChart.destroy();
+            }
+            
+            // Create new chart
+            const ctx = document.getElementById('historyChart').getContext('2d');
+            historyChart = new Chart(ctx, {
+                type: 'line',
+                data: {
+                    labels: labels,
+                    datasets: [{
+                        label: 'Mentions',
+                        data: data,
+                        borderColor: '#e74c3c',
+                        backgroundColor: 'rgba(231, 76, 60, 0.1)',
+                        fill: true,
+                        tension: 0.3,
+                        pointRadius: 2,
+                        pointHoverRadius: 5
+                    }]
+                },
+                options: {
+                    responsive: true,
+                    maintainAspectRatio: false,
+                    plugins: {
+                        legend: {
+                            display: false
+                        },
+                        tooltip: {
+                            callbacks: {
+                                label: function(context) {
+                                    return `${context.raw} rumors`;
+                                }
+                            }
+                        }
+                    },
+                    scales: {
+                        y: {
+                            beginAtZero: true,
+                            ticks: {
+                                precision: 0
+                            }
+                        },
+                        x: {
+                            ticks: {
+                                maxTicksLimit: 12
+                            }
+                        }
+                    }
+                }
+            });
+        }
+        
+        function hideChart() {
+            document.getElementById('chartSection').style.display = 'none';
+            if (historyChart) {
+                historyChart.destroy();
+                historyChart = null;
+            }
         }
         
         // Load on page load
