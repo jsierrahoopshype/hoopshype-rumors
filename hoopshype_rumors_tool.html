@@ -815,9 +815,22 @@
                     displayText = displayText.replace(rumor.quote, quotedLink);
                 }
                 
+                // Use date if available, otherwise format archive_date
+                let displayDate = rumor.date;
+                if (!displayDate || displayDate.trim() === '') {
+                    if (rumor.archive_date) {
+                        const dateObj = new Date(rumor.archive_date + 'T12:00:00');
+                        displayDate = dateObj.toLocaleDateString('en-US', { 
+                            year: 'numeric', 
+                            month: 'long', 
+                            day: 'numeric' 
+                        });
+                    }
+                }
+                
                 return `
                 <div class="rumor-card">
-                    <div class="rumor-date">${rumor.date}</div>
+                    <div class="rumor-date">${displayDate || ''}</div>
                     <div class="rumor-text">${displayText}</div>
                     <div class="rumor-meta">
                         ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
