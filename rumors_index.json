@@ -1,5 +1,5 @@
 {
-  "total_rumors": 604412,
+  "total_rumors": 143727,
   "num_files": 5,
   "files": [
     "hoopshype_rumors_part1.json",
@@ -7,5 +7,6 @@
     "hoopshype_rumors_part3.json",
     "hoopshype_rumors_part4.json",
     "hoopshype_rumors_part5.json"
-  ]
+  ],
+  "last_updated": "2025-12-06T22:24:44.626903"
 }
