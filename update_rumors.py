@@ -1,0 +1,227 @@
+#!/usr/bin/env python3
+"""
+HoopsHype Rumors Incremental Updater
+Scrapes only NEW rumors since last update and appends to database
+Runs 4x daily via GitHub Actions
+"""
+
+import requests
+from bs4 import BeautifulSoup
+import json
+from datetime import datetime, timedelta
+import time
+import sys
+import os
+
+def load_latest_date():
+    """Find the most recent date in our database by checking all parts"""
+    latest_date = None
+    
+    # Check all 5 parts since data is not sorted by date
+    for part_num in range(1, 6):
+        filename = f'hoopshype_rumors_part{part_num}.json'
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                rumors = json.load(f)
+                if rumors:
+                    # Get the most recent archive_date from this part
+                    part_latest = max(rumors, key=lambda x: x['archive_date'])
+                    part_date = datetime.fromisoformat(part_latest['archive_date'])
+                    
+                    if latest_date is None or part_date > latest_date:
+                        latest_date = part_date
+                        
+        except FileNotFoundError:
+            print(f"Warning: {filename} not found")
+            continue
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            continue
+    
+    if latest_date is None:
+        print("No database files found, starting from yesterday")
+        return datetime.now() - timedelta(days=1)
+    
+    return latest_date
+
+def scrape_rumors_for_date(date_obj):
+    """Scrape all rumors from a specific date"""
+    today = datetime.now().date()
+    target_date = date_obj.date()
+    
+    # Authentication for preview site
+    username = os.environ.get('HOOPSHYPE_USERNAME', 'preview')
+    password = os.environ.get('HOOPSHYPE_PASSWORD', 'hhpreview')
+    auth = (username, password)
+    
+    # Today's rumors are at /rumors, past rumors are in /archive/
+    if target_date == today:
+        url = "http://preview.hoopshype.com/rumors"
+    else:
+        date_str = date_obj.strftime('%Y%m%d')
+        year = date_obj.strftime('%Y')
+        url = f"http://preview.hoopshype.com/archive/rumors/{year}/rumors-{date_str}.htm"
+    
+    try:
+        response = requests.get(url, timeout=10, auth=auth)
+        if response.status_code != 200:
+            return []
+        
+        soup = BeautifulSoup(response.content, 'html.parser')
+        rumors = []
+        
+        # Find all rumor blocks
+        rumor_divs = soup.find_all('div', class_='rumor')
+        
+        for idx, rumor_div in enumerate(rumor_divs):
+            rumor_data = {
+                'date': '',
+                'archive_date': date_obj.strftime('%Y-%m-%d'),
+                'text': '',
+                'quote': '',
+                'outlet': '',
+                'source_url': '',
+                'tags': []
+            }
+            
+            # Get display date
+            date_span = rumor_div.find('span', class_='date')
+            if date_span:
+                rumor_data['date'] = date_span.get_text(strip=True)
+            
+            # Get rumor text - preview site uses 'rumortext' class, not 'rumor-content'
+            rumor_text_p = rumor_div.find('p', class_='rumortext')
+            
+            if rumor_text_p:
+                # Get full text
+                rumor_data['text'] = rumor_text_p.get_text(strip=True)
+                
+                # Get the quoted text specifically (will be hyperlinked)
+                quote_link = rumor_text_p.find('a', class_='quote')
+                if quote_link:
+                    rumor_data['quote'] = quote_link.get_text(strip=True)
+                    rumor_data['source_url'] = quote_link.get('href', '')
+                else:
+                    rumor_data['quote'] = ''
+                
+                # Get all links in the paragraph
+                all_links = rumor_text_p.find_all('a')
+                
+                # If no quote link was found, use first link as source
+                if not rumor_data['source_url'] and len(all_links) > 0:
+                    first_link = all_links[0]
+                    href = first_link.get('href', '')
+                    if href and not href.startswith('/rumors'):
+                        rumor_data['source_url'] = href
+                
+                # Last link is often the outlet/media source
+                if len(all_links) > 1:
+                    last_link = all_links[-1]
+                    outlet_text = last_link.get_text(strip=True)
+                    if outlet_text:
+                        rumor_data['outlet'] = outlet_text
+                elif len(all_links) == 1 and not rumor_data['quote']:
+                    # If only one link and it's not a quote, it's probably the outlet
+                    rumor_data['outlet'] = all_links[0].get_text(strip=True)
+            
+            # Get tags - preview site uses 'tag' class (singular)
+            tags_div = rumor_div.find('div', class_='tag')
+            
+            if tags_div:
+                # Find all <a> tags with class="tag" inside the tag div
+                tag_links = tags_div.find_all('a', class_='tag')
+                rumor_data['tags'] = [tag.get_text(strip=True) for tag in tag_links]
+            else:
+                # Try alternative: find all links at the end of the rumor div
+                all_links = rumor_div.find_all('a')
+                # Skip the first few links (they're source/outlet), take the rest as tags
+                if len(all_links) > 2:
+                    tag_links = all_links[2:]  # Skip source and outlet links
+                    rumor_data['tags'] = [tag.get_text(strip=True) for tag in tag_links if not tag.get('class')]
+            
+            if rumor_data['text']:
+                rumors.append(rumor_data)
+        
+        return rumors
+        
+    except Exception as e:
+        print(f"Error scraping {url}: {e}")
+        return []
+
+def main():
+    print("=" * 60)
+    print("HOOPSHYPE RUMORS INCREMENTAL UPDATER")
+    print("=" * 60)
+    
+    # Find latest date in database
+    latest_date = load_latest_date()
+    print(f"\nLatest rumor in database: {latest_date.strftime('%Y-%m-%d')}")
+    
+    # Scrape from next day until today
+    start_date = latest_date + timedelta(days=1)
+    end_date = datetime.now()
+    
+    if start_date > end_date:
+        print("\n✅ Database is already up to date!")
+        return
+    
+    print(f"Scraping from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
+    
+    # Scrape each day
+    new_rumors = []
+    current_date = start_date
+    
+    while current_date <= end_date:
+        print(f"\nChecking {current_date.strftime('%Y-%m-%d')}...", end=' ')
+        
+        day_rumors = scrape_rumors_for_date(current_date)
+        
+        if day_rumors:
+            print(f"✓ Found {len(day_rumors)} rumors")
+            new_rumors.extend(day_rumors)
+        else:
+            print("✗ No rumors")
+        
+        current_date += timedelta(days=1)
+        time.sleep(1)  # Be nice to the server
+    
+    # Load existing database
+    if new_rumors:
+        print(f"\n{'='*60}")
+        print(f"FOUND {len(new_rumors)} NEW RUMORS")
+        print(f"{'='*60}")
+        
+        try:
+            with open('hoopshype_rumors_part1.json', 'r', encoding='utf-8') as f:
+                existing_rumors = json.load(f)
+        except FileNotFoundError:
+            existing_rumors = []
+        
+        # Append new rumors
+        existing_rumors.extend(new_rumors)
+        
+        # Save updated database
+        with open('hoopshype_rumors_part1.json', 'w', encoding='utf-8') as f:
+            json.dump(existing_rumors, f, ensure_ascii=False, indent=2)
+        
+        print(f"\n✅ Successfully appended {len(new_rumors)} new rumors!")
+        print(f"📊 Total rumors in database: {len(existing_rumors)}")
+        
+        # Update index file
+        try:
+            with open('rumors_index.json', 'r', encoding='utf-8') as f:
+                index = json.load(f)
+            
+            index['last_updated'] = datetime.now().isoformat()
+            index['total_rumors'] = len(existing_rumors)
+            
+            with open('rumors_index.json', 'w', encoding='utf-8') as f:
+                json.dump(index, f, indent=2)
+        except Exception as e:
+            print(f"Note: Could not update index file: {e}")
+        
+    else:
+        print(f"\n✓ No new rumors found")
+
+if __name__ == '__main__':
+    main()

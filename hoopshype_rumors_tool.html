@@ -307,6 +307,60 @@
                 gap: 20px;
             }
         }
+        
+        /* Related Tags Section */
+        .related-tags-section {
+            background: white;
+            padding: 25px 30px;
+            border-radius: 8px;
+            margin-top: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        .related-tags-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .related-tags-hint {
+            font-size: 13px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .related-tag-btn {
+            display: inline-block;
+            background: #f9f9f9;
+            border: 2px solid #e0e0e0;
+            padding: 10px 15px;
+            margin: 5px;
+            border-radius: 5px;
+            cursor: pointer;
+            transition: all 0.2s;
+            font-size: 14px;
+        }
+        
+        .related-tag-btn:hover {
+            background: #e74c3c;
+            border-color: #e74c3c;
+            color: white;
+        }
+        
+        .related-tag-name {
+            font-weight: bold;
+        }
+        
+        .related-tag-count {
+            color: #999;
+            font-size: 13px;
+            margin-left: 5px;
+        }
+        
+        .related-tag-btn:hover .related-tag-count {
+            color: rgba(255,255,255,0.8);
+        }
     </style>
 </head>
 <body>
@@ -373,6 +427,13 @@
         
         <!-- Pagination -->
         <div class="pagination" id="pagination"></div>
+        
+        <!-- Related Tags -->
+        <div class="related-tags-section" id="relatedTagsSection" style="display: none;">
+            <div class="related-tags-header" id="relatedTagsHeader">Related Tags</div>
+            <div class="related-tags-hint" id="relatedTagsHint"></div>
+            <div id="relatedTagsContent"></div>
+        </div>
     </div>
     
     <script>
@@ -381,7 +442,7 @@
         let currentPage = 1;
         const rumorsPerPage = 25;
         
-        // Load data (handles multi-part files)
+        // Load data with progressive loading (handles multi-part files)
         async function loadData() {
             try {
                 // Try loading index for multi-part files
@@ -393,38 +454,113 @@
                 }
                 
                 if (indexResponse && indexResponse.ok) {
-                    // Multi-part mode
+                    // Multi-part mode with progressive loading
                     const index = await indexResponse.json();
-                    console.log(`Loading ${index.num_files} files...`);
+                    const files = index.files;
                     
-                    allRumors = [];
-                    for (let i = 0; i < index.files.length; i++) {
-                        const filename = index.files[i];
-                        console.log(`Loading ${filename}...`);
-                        const partResponse = await fetch(filename);
-                        const partData = await partResponse.json();
-                        allRumors = allRumors.concat(partData);
+                    console.log(`Progressive loading: ${files.length} files total`);
+                    
+                    // PHASE 1: Load most recent file first (part5)
+                    const recentFile = files[files.length - 1]; // part5 is last in array
+                    console.log(`Loading most recent data: ${recentFile}...`);
+                    
+                    const recentResponse = await fetch(recentFile);
+                    const recentData = await recentResponse.json();
+                    allRumors = recentData;
+                    
+                    // Sort by date - newest to oldest
+                    allRumors.sort((a, b) => {
+                        return new Date(b.archive_date) - new Date(a.archive_date);
+                    });
+                    
+                    console.log(`Loaded ${allRumors.length} recent rumors - DISPLAYING NOW`);
+                    
+                    // Calculate trending and display immediately
+                    calculateTrending();
+                    updateStats();
+                    filteredRumors = allRumors;
+                    displayPage(1);
+                    
+                    // Show loading indicator for background loading
+                    document.getElementById('resultsHeader').innerHTML = 
+                        `<span style="color: #e74c3c;">●</span> Loading older rumors in background... (${allRumors.length.toLocaleString()} available now)`;
+                    
+                    // PHASE 2: Load remaining files in background
+                    const remainingFiles = files.slice(0, -1); // Everything except part5
+                    
+                    for (let i = 0; i < remainingFiles.length; i++) {
+                        const filename = remainingFiles[i];
+                        console.log(`Background loading: ${filename}...`);
+                        
+                        try {
+                            const partResponse = await fetch(filename);
+                            const partData = await partResponse.json();
+                            
+                            // Append to existing data
+                            allRumors = allRumors.concat(partData);
+                            
+                            // Re-sort
+                            allRumors.sort((a, b) => {
+                                return new Date(b.archive_date) - new Date(a.archive_date);
+                            });
+                            
+                            // Update display
+                            updateStats();
+                            if (document.getElementById('searchBox').value.trim() === '') {
+                                filteredRumors = allRumors;
+                                if (currentPage === 1) {
+                                    displayPage(1); // Refresh first page if user is still there
+                                }
+                            }
+                            
+                            // Update header
+                            const remaining = remainingFiles.length - i - 1;
+                            if (remaining > 0) {
+                                document.getElementById('resultsHeader').innerHTML = 
+                                    `<span style="color: #e74c3c;">●</span> Loading... ${remaining} files remaining (${allRumors.length.toLocaleString()} rumors available)`;
+                            } else {
+                                document.getElementById('resultsHeader').textContent = 'All Rumors';
+                                console.log(`✓ All data loaded! Total: ${allRumors.length} rumors`);
+                            }
+                            
+                        } catch (error) {
+                            console.error(`Error loading ${filename}:`, error);
+                        }
                     }
+                    
                 } else {
-                    // Single file mode
+                    // Single file mode (fallback)
                     const response = await fetch('hoopshype_all_rumors.json');
                     allRumors = await response.json();
+                    
+                    // Sort by date - newest to oldest
+                    allRumors.sort((a, b) => {
+                        return new Date(b.archive_date) - new Date(a.archive_date);
+                    });
+                    
+                    console.log(`Loaded ${allRumors.length} total rumors`);
+                    
+                    calculateTrending();
+                    updateStats();
+                    filteredRumors = allRumors;
+                    displayPage(1);
                 }
                 
-                console.log(`Loaded ${allRumors.length} total rumors`);
+                // Setup search with debouncing
+                let searchTimeout;
+                const searchBox = document.getElementById('searchBox');
                 
-                // Calculate trending
-                calculateTrending();
+                searchBox.addEventListener('input', (e) => {
+                    clearTimeout(searchTimeout);
+                    searchTimeout = setTimeout(handleSearch, 500); // Wait 500ms after typing stops
+                });
                 
-                // Update stats
-                updateStats();
-                
-                // Show all rumors initially
-                filteredRumors = allRumors;
-                displayPage(1);
-                
-                // Setup search
-                document.getElementById('searchBox').addEventListener('input', handleSearch);
+                searchBox.addEventListener('keypress', (e) => {
+                    if (e.key === 'Enter') {
+                        clearTimeout(searchTimeout);
+                        handleSearch();
+                    }
+                });
                 
             } catch (error) {
                 document.getElementById('results').innerHTML = 
@@ -475,8 +611,8 @@
                     else if (topicCounts.hasOwnProperty(tag)) {
                         topicCounts[tag]++;
                     }
-                    // Otherwise assume it's a player/person
-                    else {
+                    // Filter out non-player tags
+                    else if (tag !== 'Deaths') {
                         playerCounts[tag] = (playerCounts[tag] || 0) + 1;
                     }
                 });
@@ -522,12 +658,94 @@
             handleSearch();
         }
         
+        function calculateRelatedTags(searchTerms) {
+            // Don't show if no search or no results
+            if (!searchTerms || searchTerms.length === 0 || filteredRumors.length === 0) {
+                hideRelatedTags();
+                return;
+            }
+            
+            // Count all tags in filtered results
+            const tagCounts = {};
+            
+            filteredRumors.forEach(rumor => {
+                rumor.tags.forEach(tag => {
+                    // Skip if this tag is already in the search
+                    const tagLower = tag.toLowerCase();
+                    const isSearchTerm = searchTerms.some(term => tagLower.includes(term));
+                    
+                    if (!isSearchTerm) {
+                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    }
+                });
+            });
+            
+            // Get top 10 related tags
+            const relatedTags = Object.entries(tagCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            if (relatedTags.length > 0) {
+                displayRelatedTags(relatedTags, searchTerms);
+            } else {
+                hideRelatedTags();
+            }
+        }
+        
+        function displayRelatedTags(tags, searchTerms) {
+            const section = document.getElementById('relatedTagsSection');
+            const header = document.getElementById('relatedTagsHeader');
+            const hint = document.getElementById('relatedTagsHint');
+            const content = document.getElementById('relatedTagsContent');
+            
+            // Update header based on number of search terms
+            if (searchTerms.length === 1) {
+                header.textContent = 'Related Tags';
+                hint.textContent = 'Click to refine your search with these related topics:';
+            } else {
+                header.textContent = 'Smart Tag Combinations';
+                hint.textContent = `People searching for "${searchTerms.join(' + ')}" also looked at:`;
+            }
+            
+            // Display tag buttons
+            content.innerHTML = tags.map(([tag, count]) => `
+                <div class="related-tag-btn" onclick="addTagToSearch('${tag.replace(/'/g, "\\'")}')">
+                    <span class="related-tag-name">${tag}</span>
+                    <span class="related-tag-count">(${count})</span>
+                </div>
+            `).join('');
+            
+            section.style.display = 'block';
+        }
+        
+        function hideRelatedTags() {
+            document.getElementById('relatedTagsSection').style.display = 'none';
+        }
+        
+        function addTagToSearch(tag) {
+            const searchBox = document.getElementById('searchBox');
+            const currentSearch = searchBox.value.trim();
+            
+            // Add tag to current search
+            if (currentSearch) {
+                searchBox.value = currentSearch + ', ' + tag;
+            } else {
+                searchBox.value = tag;
+            }
+            
+            handleSearch();
+            
+            // Scroll to top to see results
+            window.scrollTo({top: 0, behavior: 'smooth'});
+        }
+        
         function handleSearch() {
             const query = document.getElementById('searchBox').value.trim().toLowerCase();
             
             if (!query) {
                 filteredRumors = allRumors;
                 document.getElementById('resultsHeader').textContent = 'All Rumors';
+                hideRelatedTags();
             } else {
                 // Split by commas or spaces
                 const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
@@ -543,6 +761,9 @@
                 
                 document.getElementById('resultsHeader').textContent = 
                     `Search Results for "${query}" (${filteredRumors.length.toLocaleString()} rumors)`;
+                
+                // Calculate and show related tags
+                calculateRelatedTags(searchTerms);
             }
             
             currentPage = 1;
@@ -576,21 +797,39 @@
                 return;
             }
             
-            results.innerHTML = pageRumors.map(rumor => `
+            results.innerHTML = pageRumors.map(rumor => {
+                // Process text to show quoted parts as hyperlinks
+                let displayText = rumor.text;
+                
+                // Remove outlet name from end if present
+                if (rumor.outlet && displayText.endsWith(rumor.outlet)) {
+                    displayText = displayText.slice(0, -rumor.outlet.length).trim();
+                }
+                
+                // If there's a quote and source URL, make the quote clickable
+                if (rumor.quote && rumor.source_url && displayText.includes(rumor.quote)) {
+                    const quotedLink = `<a href="${rumor.source_url}" target="_blank" class="quote-link" style="color: #e74c3c; text-decoration: none; border-bottom: 1px dotted #e74c3c;">"${rumor.quote}"</a>`;
+                    // Replace the quote in the text with hyperlinked version
+                    // Handle both with and without quotes around it
+                    displayText = displayText.replace(`"${rumor.quote}"`, quotedLink);
+                    displayText = displayText.replace(rumor.quote, quotedLink);
+                }
+                
+                return `
                 <div class="rumor-card">
                     <div class="rumor-date">${rumor.date}</div>
-                    <div class="rumor-text">${rumor.text}</div>
+                    <div class="rumor-text">${displayText}</div>
                     <div class="rumor-meta">
                         ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
-                        ${rumor.source_url ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
+                        ${rumor.source_url && !rumor.quote ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
                     </div>
                     <div class="rumor-tags">
-                        ${rumor.tags.map(tag => 
+                        ${(rumor.tags || []).map(tag => 
                             `<span class="rumor-tag" onclick="searchTag('${tag.replace(/'/g, "\\'")}')">${tag}</span>`
                         ).join('')}
                     </div>
                 </div>
-            `).join('');
+            `}).join('');
             
             createPagination();
             window.scrollTo({top: 0, behavior: 'smooth'});
