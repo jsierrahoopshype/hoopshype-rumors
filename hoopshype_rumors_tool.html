@@ -181,7 +181,7 @@
         .rumor-card {
             background: white;
             padding: 20px;
-            padding-right: 80px;
+            padding-right: 70px;
             margin-bottom: 2px;
             transition: background 0.2s;
             position: relative;
@@ -199,17 +199,16 @@
         
         .team-logo-right {
             position: absolute;
-            right: 15px;
-            top: 50%;
-            transform: translateY(-50%);
-            width: 50px;
-            height: 50px;
-            opacity: 0.7;
+            right: 12px;
+            top: 15px;
+            width: 40px;
+            height: 40px;
+            opacity: 0.25;
             transition: opacity 0.2s;
         }
         
         .rumor-card:hover .team-logo-right {
-            opacity: 1;
+            opacity: 0.5;
         }
         
         .rumor-date {
@@ -707,18 +706,18 @@
         
         /* Search Rankings Section */
         .search-rankings-section {
-            background: white;
+            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f23 100%);
             padding: 25px 30px;
             border-radius: 8px;
             margin-top: 30px;
-            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
             display: none;
         }
         
         .search-rankings-header {
             font-size: 18px;
             font-weight: bold;
-            color: #333;
+            color: #fff;
             margin-bottom: 20px;
         }
         
@@ -729,40 +728,41 @@
         }
         
         .ranking-card {
-            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
             border-radius: 12px;
             padding: 20px;
             text-align: center;
-            border: 1px solid #dee2e6;
+            border: none;
             transition: transform 0.2s, box-shadow 0.2s;
+            color: white;
         }
         
         .ranking-card:hover {
             transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
         
         .ranking-period {
             font-size: 11px;
-            color: #666;
+            color: rgba(255,255,255,0.7);
             text-transform: uppercase;
             letter-spacing: 1px;
             margin-bottom: 8px;
         }
         
         .ranking-position {
-            font-size: 52px;
+            font-size: 56px;
             font-weight: bold;
-            color: #333;
+            color: #fff;
             margin-bottom: 5px;
             line-height: 1;
-            text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
+            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         
-        .ranking-position.top1 { color: #f1c40f; text-shadow: 1px 1px 0 #c9a400; }
-        .ranking-position.top2 { color: #95a5a6; text-shadow: 1px 1px 0 #7f8c8d; }
-        .ranking-position.top3 { color: #cd6133; text-shadow: 1px 1px 0 #a04d28; }
-        .ranking-position.top10 { color: #e74c3c; text-shadow: 1px 1px 0 #c0392b; }
+        .ranking-position.top1 { color: #ffd700; text-shadow: 0 0 20px rgba(255,215,0,0.5); }
+        .ranking-position.top2 { color: #c0c0c0; text-shadow: 0 0 15px rgba(192,192,192,0.5); }
+        .ranking-position.top3 { color: #cd7f32; text-shadow: 0 0 15px rgba(205,127,50,0.5); }
+        .ranking-position.top10 { color: #e74c3c; text-shadow: 0 0 10px rgba(231,76,60,0.5); }
         
         .ranking-suffix {
             font-size: 18px;
@@ -771,12 +771,12 @@
         
         .ranking-mentions {
             font-size: 13px;
-            color: #666;
+            color: rgba(255,255,255,0.7);
             margin-top: 5px;
         }
         
         .ranking-mentions strong {
-            color: #333;
+            color: #fff;
         }
     </style>
 </head>
@@ -1162,8 +1162,8 @@
                     
                     console.log(`Progressive loading: ${files.length} files total`);
                     
-                    // PHASE 1: Load most recent file first (part5)
-                    const recentFile = files[files.length - 1]; // part5 is last in array
+                    // PHASE 1: Load most recent file first (last part)
+                    const recentFile = files[files.length - 1]; // Last part is most recent
                     console.log(`Loading most recent data: ${recentFile}...`);
                     
                     const recentResponse = await fetch(recentFile);

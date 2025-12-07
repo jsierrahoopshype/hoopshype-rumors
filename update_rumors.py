@@ -17,8 +17,8 @@ def load_latest_date():
     """Find the most recent date in our database by checking all parts"""
     latest_date = None
     
-    # Check all 5 parts since data is not sorted by date
-    for part_num in range(1, 6):
+    # Check all 7 parts since data is not sorted by date
+    for part_num in range(1, 8):
         filename = f'hoopshype_rumors_part{part_num}.json'
         try:
             with open(filename, 'r', encoding='utf-8') as f:
@@ -32,7 +32,6 @@ def load_latest_date():
                         latest_date = part_date
                         
         except FileNotFoundError:
-            print(f"Warning: {filename} not found")
             continue
         except Exception as e:
             print(f"Error loading {filename}: {e}")
@@ -185,27 +184,30 @@ def main():
         current_date += timedelta(days=1)
         time.sleep(1)  # Be nice to the server
     
-    # Load existing database
+    # Load existing database - use LAST part file (part7)
     if new_rumors:
         print(f"\n{'='*60}")
         print(f"FOUND {len(new_rumors)} NEW RUMORS")
         print(f"{'='*60}")
         
+        # Find the last part file
+        last_part = 'hoopshype_rumors_part7.json'
+        
         try:
-            with open('hoopshype_rumors_part1.json', 'r', encoding='utf-8') as f:
+            with open(last_part, 'r', encoding='utf-8') as f:
                 existing_rumors = json.load(f)
         except FileNotFoundError:
             existing_rumors = []
         
-        # Append new rumors
+        # Append new rumors to the last part
         existing_rumors.extend(new_rumors)
         
         # Save updated database
-        with open('hoopshype_rumors_part1.json', 'w', encoding='utf-8') as f:
-            json.dump(existing_rumors, f, ensure_ascii=False, indent=2)
+        with open(last_part, 'w', encoding='utf-8') as f:
+            json.dump(existing_rumors, f, ensure_ascii=False)
         
-        print(f"\n✅ Successfully appended {len(new_rumors)} new rumors!")
-        print(f"📊 Total rumors in database: {len(existing_rumors)}")
+        print(f"\n✅ Successfully appended {len(new_rumors)} new rumors to {last_part}!")
+        print(f"📊 Rumors in {last_part}: {len(existing_rumors)}")
         
         # Update index file
         try:
@@ -213,10 +215,22 @@ def main():
                 index = json.load(f)
             
             index['last_updated'] = datetime.now().isoformat()
-            index['total_rumors'] = len(existing_rumors)
+            
+            # Count total rumors across all parts
+            total = 0
+            for part_num in range(1, 8):
+                try:
+                    with open(f'hoopshype_rumors_part{part_num}.json', 'r', encoding='utf-8') as f:
+                        total += len(json.load(f))
+                except:
+                    pass
+            
+            index['total_rumors'] = total
             
             with open('rumors_index.json', 'w', encoding='utf-8') as f:
                 json.dump(index, f, indent=2)
+                
+            print(f"📊 Total rumors across all parts: {total}")
         except Exception as e:
             print(f"Note: Could not update index file: {e}")
         

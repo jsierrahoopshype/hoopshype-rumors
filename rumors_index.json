@@ -1,11 +1,13 @@
 {
-  "num_files": 5,
+  "num_files": 7,
   "files": [
     "hoopshype_rumors_part1.json",
     "hoopshype_rumors_part2.json",
     "hoopshype_rumors_part3.json",
     "hoopshype_rumors_part4.json",
-    "hoopshype_rumors_part5.json"
+    "hoopshype_rumors_part5.json",
+    "hoopshype_rumors_part6.json",
+    "hoopshype_rumors_part7.json"
   ],
   "total_rumors": 624121,
   "last_updated": null
