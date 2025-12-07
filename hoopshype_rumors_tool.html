@@ -724,17 +724,18 @@
         
         /* Search Rankings Section */
         .search-rankings-section {
-            background: linear-gradient(135deg, #1a1a2e 0%, #0f0f23 100%);
+            background: #fff;
             padding: 15px 20px;
             border-radius: 8px;
             margin-top: 20px;
+            border: 1px solid #e0e0e0;
             display: none;
         }
         
         .search-rankings-header {
             font-size: 14px;
             font-weight: bold;
-            color: #fff;
+            color: #333;
             margin-bottom: 12px;
         }
         
@@ -745,7 +746,7 @@
         }
         
         .ranking-card {
-            background: rgba(255,255,255,0.08);
+            background: #f5f5f5;
             border-radius: 6px;
             padding: 10px 12px;
             text-align: center;
@@ -753,7 +754,7 @@
         
         .ranking-period {
             font-size: 10px;
-            color: rgba(255,255,255,0.5);
+            color: #666;
             text-transform: uppercase;
             letter-spacing: 0.5px;
             margin-bottom: 4px;
@@ -762,13 +763,13 @@
         .ranking-position {
             font-size: 16px;
             font-weight: bold;
-            color: #fff;
+            color: #333;
         }
         
-        .ranking-position.top1 { color: #ffd700; }
-        .ranking-position.top2 { color: #c0c0c0; }
-        .ranking-position.top3 { color: #cd7f32; }
-        .ranking-position.top10 { color: #e74c3c; }
+        .ranking-position.top1 { color: #d4a000; }
+        .ranking-position.top2 { color: #666; }
+        .ranking-position.top3 { color: #a05000; }
+        .ranking-position.top10 { color: #c0392b; }
         
         .ranking-suffix {
             font-size: 12px;
@@ -776,8 +777,8 @@
         }
         
         .ranking-mentions {
-            font-size: 12px;
-            color: rgba(255,255,255,0.5);
+            font-size: 11px;
+            color: #666;
         }
     </style>
 </head>
@@ -1157,113 +1158,39 @@
                 }
                 
                 if (indexResponse && indexResponse.ok) {
-                    // Multi-part mode with progressive loading
+                    // Multi-part mode - load ALL files in parallel for maximum speed
                     const index = await indexResponse.json();
                     const files = index.files;
                     
-                    console.log(`Progressive loading: ${files.length} files total`);
+                    console.log(`Loading all ${files.length} files in parallel...`);
                     
-                    // PHASE 1: Load LAST TWO files first for speed (most recent data)
-                    const lastFiles = files.slice(-2); // Get last 2 files
-                    console.log(`Loading most recent data: ${lastFiles.join(', ')}...`);
+                    // Start loading ALL files at once
+                    const allPromises = files.map(f => 
+                        fetch(f)
+                            .then(r => r.ok ? r.json() : [])
+                            .catch(() => [])
+                    );
                     
-                    // Load both in parallel
-                    const recentPromises = lastFiles.map(f => fetch(f).then(r => r.json()));
-                    const recentDataArrays = await Promise.all(recentPromises);
+                    // Wait for all files to load
+                    const allDataArrays = await Promise.all(allPromises);
                     
-                    // Combine recent data
-                    allRumors = recentDataArrays.flat();
+                    // Combine all data
+                    allRumors = allDataArrays.flat();
                     
                     // Sort by date - newest to oldest
                     allRumors.sort((a, b) => {
                         return new Date(b.archive_date) - new Date(a.archive_date);
                     });
                     
-                    console.log(`Loaded ${allRumors.length} recent rumors - DISPLAYING NOW`);
+                    console.log(`Loaded ${allRumors.length} total rumors`);
                     
-                    // Calculate trending and display immediately
+                    // Calculate trending and display
                     calculateTrending();
+                    calculateRankings();
                     filteredRumors = allRumors;
                     displayPage(1);
                     
                     // Check for URL search parameter
-                    checkUrlSearch();
-                    
-                    // Show loading indicator for background loading
-                    document.getElementById('resultsHeader').innerHTML = 
-                        `<span style="color: #e74c3c;">●</span> Loading full archive... (${allRumors.length.toLocaleString()} available now)`;
-                    
-                    // PHASE 2: Load remaining files in background (in parallel batches)
-                    const remainingFiles = files.slice(0, -2);
-                    
-                    // Load in batches of 2 for speed
-                    for (let i = 0; i < remainingFiles.length; i += 2) {
-                        const batch = remainingFiles.slice(i, i + 2);
-                        console.log(`Background loading: ${batch.join(', ')}...`);
-                        
-                        try {
-                            const batchPromises = batch.map(f => 
-                                fetch(f)
-                                    .then(r => {
-                                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
-                                        return r.json();
-                                    })
-                                    .catch(err => {
-                                        console.warn(`Failed to load ${f}:`, err);
-                                        return []; // Return empty array on failure
-                                    })
-                            );
-                            const batchDataArrays = await Promise.all(batchPromises);
-                            
-                            // Append to existing data
-                            batchDataArrays.forEach(partData => {
-                                if (partData && partData.length > 0) {
-                                    allRumors = allRumors.concat(partData);
-                                }
-                            });
-                            
-                            // Re-sort
-                            allRumors.sort((a, b) => {
-                                return new Date(b.archive_date) - new Date(a.archive_date);
-                            });
-                            
-                            // Update display if not searching
-                            const searchVal = document.getElementById('searchBox').value.trim();
-                            if (searchVal === '') {
-                                filteredRumors = allRumors;
-                                if (currentPage === 1) {
-                                    displayPage(1);
-                                }
-                            }
-                            
-                            // Update header with progress
-                            if (searchVal === '') {
-                                document.getElementById('resultsHeader').innerHTML = 
-                                    `<span style="color: #e74c3c;">●</span> Loading... (${allRumors.length.toLocaleString()} rumors)`;
-                            }
-                                
-                        } catch (e) {
-                            console.error(`Error loading batch:`, e);
-                        }
-                    }
-                    
-                    console.log(`Loaded ${allRumors.length} total rumors`);
-                    
-                    // Final update
-                    try {
-                        const searchVal = document.getElementById('searchBox').value.trim();
-                        if (searchVal === '') {
-                            document.getElementById('resultsHeader').textContent = 'All Rumors';
-                            calculateTrending();
-                            calculateRankings();
-                            filteredRumors = allRumors;
-                            displayPage(1);
-                        }
-                    } catch (e) {
-                        console.error('Error in final update:', e);
-                    }
-                    
-                    // Re-check URL search after full load
                     checkUrlSearch();
                 } else {
                     // Single file mode (fallback)
