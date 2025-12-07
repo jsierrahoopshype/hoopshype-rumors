@@ -422,11 +422,6 @@
             position: relative;
             height: 300px;
             width: 100%;
-            cursor: pointer;
-        }
-        
-        .chart-container:hover {
-            opacity: 0.95;
         }
         
         /* Sentiment Indicators */
@@ -1158,39 +1153,38 @@
                 }
                 
                 if (indexResponse && indexResponse.ok) {
-                    // Multi-part mode - load ALL files in parallel for maximum speed
+                    // Multi-part mode - load files sequentially
                     const index = await indexResponse.json();
                     const files = index.files;
                     
-                    console.log(`Loading all ${files.length} files in parallel...`);
+                    console.log(`Loading ${files.length} files...`);
                     
-                    // Start loading ALL files at once
-                    const allPromises = files.map(f => 
-                        fetch(f)
-                            .then(r => r.ok ? r.json() : [])
-                            .catch(() => [])
-                    );
-                    
-                    // Wait for all files to load
-                    const allDataArrays = await Promise.all(allPromises);
-                    
-                    // Combine all data
-                    allRumors = allDataArrays.flat();
+                    // Load files one by one (more reliable than parallel)
+                    for (const file of files) {
+                        try {
+                            const response = await fetch(file);
+                            if (response.ok) {
+                                const data = await response.json();
+                                allRumors = allRumors.concat(data);
+                                console.log(`Loaded ${file}: ${data.length} rumors`);
+                            }
+                        } catch (e) {
+                            console.warn(`Failed to load ${file}`);
+                        }
+                    }
                     
                     // Sort by date - newest to oldest
                     allRumors.sort((a, b) => {
                         return new Date(b.archive_date) - new Date(a.archive_date);
                     });
                     
-                    console.log(`Loaded ${allRumors.length} total rumors`);
+                    console.log(`Total: ${allRumors.length} rumors`);
                     
-                    // Calculate trending and display
+                    // Display
                     calculateTrending();
                     calculateRankings();
                     filteredRumors = allRumors;
                     displayPage(1);
-                    
-                    // Check for URL search parameter
                     checkUrlSearch();
                 } else {
                     // Single file mode (fallback)
@@ -1419,25 +1413,17 @@
         function checkUrlSearch() {
             const params = new URLSearchParams(window.location.search);
             const searchQuery = params.get('q') || params.get('search');
-            const monthFilter = params.get('month'); // Format: YYYY-MM
             
             if (searchQuery) {
                 document.getElementById('searchBox').value = searchQuery;
                 handleSearch(false); // Don't update URL again
             }
-            
-            if (monthFilter && currentSearchTerms.length > 0) {
-                filterByMonth(monthFilter);
-            }
         }
         
-        function updateUrl(query, month = null) {
+        function updateUrl(query) {
             const params = new URLSearchParams();
             if (query) {
                 params.set('q', query);
-            }
-            if (month) {
-                params.set('month', month);
             }
             
             const newUrl = params.toString() ? 
@@ -1445,38 +1431,6 @@
                 window.location.pathname;
             
             window.history.replaceState({}, '', newUrl);
-        }
-        
-        function filterByMonth(monthKey) {
-            // Filter ALL rumors by search terms AND specific month
-            const [year, month] = monthKey.split('-');
-            
-            filteredRumors = allRumors.filter(rumor => {
-                // Must be in the specified month
-                if (!rumor.archive_date.startsWith(monthKey)) return false;
-                
-                // Must match search terms
-                if (currentSearchTerms.length > 0) {
-                    return currentSearchTerms.every(term => {
-                        const inText = rumor.text.toLowerCase().includes(term);
-                        const inTags = rumor.tags.some(tag => tag.toLowerCase().includes(term));
-                        return inText || inTags;
-                    });
-                }
-                return true;
-            });
-            
-            const monthNames = ['January', 'February', 'March', 'April', 'May', 'June', 
-                               'July', 'August', 'September', 'October', 'November', 'December'];
-            const monthName = monthNames[parseInt(month) - 1];
-            
-            const searchText = currentSearchTerms.length > 0 ? `"${currentSearchTerms.join(' + ')}" in ` : '';
-            
-            document.getElementById('resultsHeader').innerHTML = 
-                `${searchText}${monthName} ${year} (${filteredRumors.length.toLocaleString()} rumors) <a href="#" onclick="handleSearch(); return false;" style="font-size: 13px; margin-left: 10px;">← Back to all</a>`;
-            
-            currentPage = 1;
-            displayPage(1);
         }
         
         function handleSearch(shouldUpdateUrl = true) {
@@ -1699,7 +1653,6 @@
         
         // Historical Chart
         let historyChart = null;
-        let chartMonthKeys = []; // Store month keys for click handler
         
         function generateHistoricalChart(searchTerms) {
             if (!searchTerms || searchTerms.length === 0 || filteredRumors.length < 10) {
@@ -1718,7 +1671,6 @@
             
             // Sort by date - show ALL months from first to last
             const sortedMonths = Object.keys(monthCounts).sort();
-            chartMonthKeys = sortedMonths; // Store for click handler
             
             console.log('[CHART DEBUG] Total months:', sortedMonths.length);
             console.log('[CHART DEBUG] First month:', sortedMonths[0]);
@@ -1802,27 +1754,13 @@
                                 minRotation: 45
                             }
                         }
-                    },
-                    onClick: function(event, elements) {
-                        if (elements.length > 0) {
-                            const index = elements[0].index;
-                            const monthKey = chartMonthKeys[index];
-                            const query = currentSearchTerms.join(' ');
-                            
-                            // Filter to that specific month
-                            filterByMonth(monthKey);
-                            updateUrl(query, monthKey);
-                            
-                            // Scroll to results
-                            document.getElementById('results').scrollIntoView({behavior: 'smooth'});
-                        }
                     }
                 }
             });
             
-            // Add hint about clicking
-            document.getElementById('chartHeader').innerHTML = 
-                `📊 "${searchText}" - ${filteredRumors.length.toLocaleString()} mentions since ${firstAppearance} <span style="font-size: 12px; color: #888; font-weight: normal;">(click chart to filter by month)</span>`;
+            // Update header
+            document.getElementById('chartHeader').textContent = 
+                `📊 "${searchText}" - ${filteredRumors.length.toLocaleString()} mentions since ${firstAppearance}`;
         }
         
         function hideChart() {
