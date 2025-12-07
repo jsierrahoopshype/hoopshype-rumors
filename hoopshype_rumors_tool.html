@@ -181,28 +181,52 @@
         .rumor-card {
             background: white;
             padding: 20px;
+            padding-left: 70px;
             margin-bottom: 2px;
             transition: background 0.2s;
+            position: relative;
+            min-height: 80px;
         }
         
         .rumor-card:hover {
-            background: #f9f9f9;
+            background: #fafafa;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
         }
         
         .rumor-card:last-child {
             border-radius: 0 0 8px 8px;
         }
         
+        .team-badge {
+            position: absolute;
+            left: 15px;
+            top: 20px;
+            width: 42px;
+            height: 42px;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 14px;
+            color: white;
+            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
+            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+        }
+        
         .rumor-date {
             font-size: 12px;
-            color: #999;
+            color: #888;
             margin-bottom: 8px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
         }
         
         .rumor-text {
             font-size: 15px;
-            line-height: 1.6;
-            color: #333;
+            line-height: 1.7;
+            color: #2c3e50;
             margin-bottom: 12px;
         }
         
@@ -215,9 +239,12 @@
         }
         
         .rumor-outlet {
-            font-size: 13px;
-            color: #666;
+            font-size: 12px;
+            color: #777;
             font-style: italic;
+            background: #f5f5f5;
+            padding: 2px 8px;
+            border-radius: 10px;
         }
         
         .rumor-source {
@@ -232,18 +259,19 @@
         
         .rumor-tags {
             display: flex;
-            gap: 5px;
+            gap: 6px;
             flex-wrap: wrap;
         }
         
         .rumor-tag {
             background: #f0f0f0;
-            padding: 4px 10px;
+            padding: 5px 12px;
             border-radius: 15px;
             font-size: 12px;
-            color: #666;
+            color: #555;
             cursor: pointer;
             transition: all 0.2s;
+            border: 1px solid transparent;
         }
         
         .rumor-tag:hover {
@@ -410,6 +438,347 @@
             background: #e2e3e5;
             color: #383d41;
         }
+        
+        /* Enhanced Rumor Cards */
+        .rumor-card {
+            background: white;
+            padding: 20px 25px;
+            margin-bottom: 15px;
+            border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+            border-left: 4px solid #e74c3c;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .rumor-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.1);
+        }
+        
+        .rumor-header {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            margin-bottom: 12px;
+        }
+        
+        .team-logo {
+            width: 36px;
+            height: 36px;
+            border-radius: 50%;
+            object-fit: contain;
+            background: #f8f9fa;
+            padding: 4px;
+        }
+        
+        .rumor-date {
+            color: #888;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .rumor-text {
+            font-size: 15px;
+            line-height: 1.7;
+            color: #333;
+            margin-bottom: 15px;
+        }
+        
+        .rumor-meta {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            flex-wrap: wrap;
+            margin-bottom: 12px;
+        }
+        
+        .rumor-outlet {
+            color: #666;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 5px;
+        }
+        
+        .rumor-outlet::before {
+            content: "📰";
+            font-size: 12px;
+        }
+        
+        .rumor-source {
+            color: #e74c3c;
+            text-decoration: none;
+            font-size: 13px;
+            font-weight: 500;
+        }
+        
+        .rumor-source:hover {
+            text-decoration: underline;
+        }
+        
+        .rumor-tags {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+        }
+        
+        .rumor-tag {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            padding: 6px 12px;
+            border-radius: 20px;
+            font-size: 12px;
+            cursor: pointer;
+            transition: all 0.2s;
+            border: 1px solid #dee2e6;
+        }
+        
+        .rumor-tag:hover {
+            background: linear-gradient(135deg, #e74c3c 0%, #c0392b 100%);
+            color: white;
+            border-color: #e74c3c;
+        }
+        
+        /* On This Day Section */
+        .on-this-day-section {
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            padding: 25px 30px;
+            border-radius: 12px;
+            margin-bottom: 30px;
+            color: white;
+        }
+        
+        .on-this-day-header {
+            font-size: 20px;
+            font-weight: bold;
+            margin-bottom: 15px;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+        
+        .on-this-day-tabs {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .otd-tab {
+            background: rgba(255,255,255,0.2);
+            border: none;
+            color: white;
+            padding: 8px 16px;
+            border-radius: 20px;
+            cursor: pointer;
+            font-size: 13px;
+            transition: all 0.2s;
+        }
+        
+        .otd-tab:hover, .otd-tab.active {
+            background: white;
+            color: #667eea;
+        }
+        
+        .otd-content {
+            background: rgba(255,255,255,0.1);
+            padding: 15px 20px;
+            border-radius: 8px;
+            font-size: 14px;
+            line-height: 1.6;
+        }
+        
+        .otd-content a {
+            color: #ffd700;
+        }
+        
+        /* Rankings Section */
+        .rankings-section {
+            background: white;
+            padding: 30px;
+            border-radius: 12px;
+            margin-top: 40px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.08);
+        }
+        
+        .rankings-header {
+            font-size: 24px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 25px;
+            text-align: center;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 10px;
+        }
+        
+        .rankings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 25px;
+        }
+        
+        .ranking-card {
+            background: #f8f9fa;
+            border-radius: 10px;
+            padding: 20px;
+        }
+        
+        .ranking-card-header {
+            font-size: 16px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 15px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #e74c3c;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+        
+        .ranking-period {
+            font-size: 11px;
+            color: #666;
+            background: #e9ecef;
+            padding: 3px 8px;
+            border-radius: 10px;
+            margin-left: auto;
+        }
+        
+        .ranking-item {
+            display: flex;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #e9ecef;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+        
+        .ranking-item:hover {
+            background: #e9ecef;
+            margin: 0 -10px;
+            padding: 10px;
+            border-radius: 5px;
+        }
+        
+        .ranking-item:last-child {
+            border-bottom: none;
+        }
+        
+        .ranking-position {
+            width: 28px;
+            height: 28px;
+            background: #e74c3c;
+            color: white;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-weight: bold;
+            font-size: 13px;
+            margin-right: 12px;
+        }
+        
+        .ranking-position.gold { background: #ffd700; color: #333; }
+        .ranking-position.silver { background: #c0c0c0; color: #333; }
+        .ranking-position.bronze { background: #cd7f32; color: white; }
+        
+        .ranking-logo {
+            width: 32px;
+            height: 32px;
+            border-radius: 50%;
+            object-fit: contain;
+            margin-right: 10px;
+            background: white;
+            padding: 3px;
+        }
+        
+        .ranking-name {
+            flex: 1;
+            font-size: 14px;
+            color: #333;
+        }
+        
+        .ranking-count {
+            font-size: 13px;
+            color: #666;
+            font-weight: 500;
+        }
+        
+        /* Search Rankings Section */
+        .search-rankings-section {
+            background: white;
+            padding: 25px 30px;
+            border-radius: 8px;
+            margin-top: 30px;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+            display: none;
+        }
+        
+        .search-rankings-header {
+            font-size: 18px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 20px;
+        }
+        
+        .rankings-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+            gap: 15px;
+        }
+        
+        .ranking-card {
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            border-radius: 12px;
+            padding: 20px;
+            text-align: center;
+            border: 1px solid #dee2e6;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+        
+        .ranking-card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.1);
+        }
+        
+        .ranking-period {
+            font-size: 11px;
+            color: #666;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 8px;
+        }
+        
+        .ranking-position {
+            font-size: 42px;
+            font-weight: bold;
+            color: #333;
+            margin-bottom: 5px;
+            line-height: 1;
+        }
+        
+        .ranking-position.top1 { color: #f1c40f; }
+        .ranking-position.top2 { color: #95a5a6; }
+        .ranking-position.top3 { color: #cd6133; }
+        .ranking-position.top10 { color: #e74c3c; }
+        
+        .ranking-suffix {
+            font-size: 18px;
+            font-weight: normal;
+        }
+        
+        .ranking-mentions {
+            font-size: 13px;
+            color: #666;
+            margin-top: 5px;
+        }
+        
+        .ranking-mentions strong {
+            color: #333;
+        }
     </style>
 </head>
 <body>
@@ -450,20 +819,15 @@
             </div>
         </div>
         
-        <!-- Stats Bar -->
-        <div class="stats-bar" id="statsBar">
-            <div class="stat">
-                <div class="stat-number" id="totalRumors">-</div>
-                <div class="stat-label">Total Rumors</div>
+        <!-- On This Day Section -->
+        <div class="on-this-day-section" id="onThisDaySection">
+            <div class="on-this-day-header">📅 On This Day in NBA Rumors</div>
+            <div class="on-this-day-tabs">
+                <button class="otd-tab active" onclick="showOnThisDay(1)">1 Year Ago</button>
+                <button class="otd-tab" onclick="showOnThisDay(5)">5 Years Ago</button>
+                <button class="otd-tab" onclick="showOnThisDay(10)">10 Years Ago</button>
             </div>
-            <div class="stat">
-                <div class="stat-number" id="filteredRumors">-</div>
-                <div class="stat-label">Showing</div>
-            </div>
-            <div class="stat">
-                <div class="stat-number" id="dateRange">-</div>
-                <div class="stat-label">Years of Data</div>
-            </div>
+            <div class="otd-content" id="otdContent">Loading...</div>
         </div>
         
         <!-- Results -->
@@ -491,6 +855,14 @@
                 <canvas id="historyChart"></canvas>
             </div>
         </div>
+        
+        <!-- Search Rankings Section -->
+        <div class="search-rankings-section" id="searchRankingsSection">
+            <div class="search-rankings-header" id="searchRankingsHeader">🏆 Rankings</div>
+            <div class="rankings-grid" id="searchRankingsGrid">
+                <!-- Filled dynamically -->
+            </div>
+        </div>
     </div>
     
     <script>
@@ -498,6 +870,298 @@
         let filteredRumors = [];
         let currentPage = 1;
         const rumorsPerPage = 25;
+        
+        // NBA Team Logos (using ESPN CDN)
+        const teamLogos = {
+            'Atlanta Hawks': 'https://a.espncdn.com/i/teamlogos/nba/500/atl.png',
+            'Boston Celtics': 'https://a.espncdn.com/i/teamlogos/nba/500/bos.png',
+            'Brooklyn Nets': 'https://a.espncdn.com/i/teamlogos/nba/500/bkn.png',
+            'Charlotte Hornets': 'https://a.espncdn.com/i/teamlogos/nba/500/cha.png',
+            'Chicago Bulls': 'https://a.espncdn.com/i/teamlogos/nba/500/chi.png',
+            'Cleveland Cavaliers': 'https://a.espncdn.com/i/teamlogos/nba/500/cle.png',
+            'Dallas Mavericks': 'https://a.espncdn.com/i/teamlogos/nba/500/dal.png',
+            'Denver Nuggets': 'https://a.espncdn.com/i/teamlogos/nba/500/den.png',
+            'Detroit Pistons': 'https://a.espncdn.com/i/teamlogos/nba/500/det.png',
+            'Golden State Warriors': 'https://a.espncdn.com/i/teamlogos/nba/500/gs.png',
+            'Houston Rockets': 'https://a.espncdn.com/i/teamlogos/nba/500/hou.png',
+            'Indiana Pacers': 'https://a.espncdn.com/i/teamlogos/nba/500/ind.png',
+            'Los Angeles Clippers': 'https://a.espncdn.com/i/teamlogos/nba/500/lac.png',
+            'Los Angeles Lakers': 'https://a.espncdn.com/i/teamlogos/nba/500/lal.png',
+            'Memphis Grizzlies': 'https://a.espncdn.com/i/teamlogos/nba/500/mem.png',
+            'Miami Heat': 'https://a.espncdn.com/i/teamlogos/nba/500/mia.png',
+            'Milwaukee Bucks': 'https://a.espncdn.com/i/teamlogos/nba/500/mil.png',
+            'Minnesota Timberwolves': 'https://a.espncdn.com/i/teamlogos/nba/500/min.png',
+            'New Orleans Pelicans': 'https://a.espncdn.com/i/teamlogos/nba/500/no.png',
+            'New York Knicks': 'https://a.espncdn.com/i/teamlogos/nba/500/ny.png',
+            'Oklahoma City Thunder': 'https://a.espncdn.com/i/teamlogos/nba/500/okc.png',
+            'Orlando Magic': 'https://a.espncdn.com/i/teamlogos/nba/500/orl.png',
+            'Philadelphia 76ers': 'https://a.espncdn.com/i/teamlogos/nba/500/phi.png',
+            'Phoenix Suns': 'https://a.espncdn.com/i/teamlogos/nba/500/phx.png',
+            'Portland Trail Blazers': 'https://a.espncdn.com/i/teamlogos/nba/500/por.png',
+            'Sacramento Kings': 'https://a.espncdn.com/i/teamlogos/nba/500/sac.png',
+            'San Antonio Spurs': 'https://a.espncdn.com/i/teamlogos/nba/500/sa.png',
+            'Toronto Raptors': 'https://a.espncdn.com/i/teamlogos/nba/500/tor.png',
+            'Utah Jazz': 'https://a.espncdn.com/i/teamlogos/nba/500/utah.png',
+            'Washington Wizards': 'https://a.espncdn.com/i/teamlogos/nba/500/wsh.png'
+        };
+        
+        // All 30 NBA teams for filtering
+        const nbaTeams = Object.keys(teamLogos);
+        
+        // Team primary colors for badges
+        const teamColors = {
+            'Atlanta Hawks': '#E03A3E',
+            'Boston Celtics': '#007A33',
+            'Brooklyn Nets': '#000000',
+            'Charlotte Hornets': '#1D1160',
+            'Chicago Bulls': '#CE1141',
+            'Cleveland Cavaliers': '#860038',
+            'Dallas Mavericks': '#00538C',
+            'Denver Nuggets': '#0E2240',
+            'Detroit Pistons': '#C8102E',
+            'Golden State Warriors': '#1D428A',
+            'Houston Rockets': '#CE1141',
+            'Indiana Pacers': '#002D62',
+            'Los Angeles Clippers': '#C8102E',
+            'Los Angeles Lakers': '#552583',
+            'Memphis Grizzlies': '#5D76A9',
+            'Miami Heat': '#98002E',
+            'Milwaukee Bucks': '#00471B',
+            'Minnesota Timberwolves': '#0C2340',
+            'New Orleans Pelicans': '#0C2340',
+            'New York Knicks': '#006BB6',
+            'Oklahoma City Thunder': '#007AC1',
+            'Orlando Magic': '#0077C0',
+            'Philadelphia 76ers': '#006BB6',
+            'Phoenix Suns': '#1D1160',
+            'Portland Trail Blazers': '#E03A3E',
+            'Sacramento Kings': '#5A2D81',
+            'San Antonio Spurs': '#C4CED4',
+            'Toronto Raptors': '#CE1141',
+            'Utah Jazz': '#002B5C',
+            'Washington Wizards': '#002B5C'
+        };
+        
+        // Get team info from rumor tags
+        function getTeamInfo(tags) {
+            if (!tags || tags.length === 0) return null;
+            for (const tag of tags) {
+                if (teamColors[tag]) {
+                    return { 
+                        name: tag, 
+                        color: teamColors[tag],
+                        abbrev: getTeamAbbrev(tag)
+                    };
+                }
+            }
+            return null;
+        }
+        
+        function getTeamAbbrev(teamName) {
+            const abbrevs = {
+                'Atlanta Hawks': 'ATL', 'Boston Celtics': 'BOS', 'Brooklyn Nets': 'BKN',
+                'Charlotte Hornets': 'CHA', 'Chicago Bulls': 'CHI', 'Cleveland Cavaliers': 'CLE',
+                'Dallas Mavericks': 'DAL', 'Denver Nuggets': 'DEN', 'Detroit Pistons': 'DET',
+                'Golden State Warriors': 'GSW', 'Houston Rockets': 'HOU', 'Indiana Pacers': 'IND',
+                'Los Angeles Clippers': 'LAC', 'Los Angeles Lakers': 'LAL', 'Memphis Grizzlies': 'MEM',
+                'Miami Heat': 'MIA', 'Milwaukee Bucks': 'MIL', 'Minnesota Timberwolves': 'MIN',
+                'New Orleans Pelicans': 'NOP', 'New York Knicks': 'NYK', 'Oklahoma City Thunder': 'OKC',
+                'Orlando Magic': 'ORL', 'Philadelphia 76ers': 'PHI', 'Phoenix Suns': 'PHX',
+                'Portland Trail Blazers': 'POR', 'Sacramento Kings': 'SAC', 'San Antonio Spurs': 'SAS',
+                'Toronto Raptors': 'TOR', 'Utah Jazz': 'UTA', 'Washington Wizards': 'WAS'
+            };
+            return abbrevs[teamName] || teamName.substring(0, 3).toUpperCase();
+        }
+        
+        // Get player initials
+        function getPlayerInitials(name) {
+            const parts = name.split(' ');
+            if (parts.length >= 2) {
+                return parts[0][0] + parts[parts.length - 1][0];
+            }
+            return name.substring(0, 2).toUpperCase();
+        }
+        
+        // Get team logo from rumor tags
+        function getTeamLogo(tags) {
+            if (!tags || tags.length === 0) return null;
+            for (const tag of tags) {
+                if (teamLogos[tag]) {
+                    return { name: tag, logo: teamLogos[tag] };
+                }
+            }
+            return null;
+        }
+        
+        // On This Day functionality
+        function showOnThisDay(yearsAgo) {
+            // Update active tab
+            document.querySelectorAll('.otd-tab').forEach(tab => tab.classList.remove('active'));
+            event.target.classList.add('active');
+            
+            const today = new Date();
+            const targetDate = new Date(today.getFullYear() - yearsAgo, today.getMonth(), today.getDate());
+            const targetDateStr = targetDate.toISOString().split('T')[0];
+            
+            // Find rumors from that date (allow +/- 2 days)
+            const startDate = new Date(targetDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const endDate = new Date(targetDate.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            
+            const otdRumors = allRumors.filter(r => 
+                r.archive_date >= startDate && r.archive_date <= endDate
+            );
+            
+            const content = document.getElementById('otdContent');
+            
+            if (otdRumors.length === 0) {
+                content.innerHTML = `<em>No rumors found from ${targetDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.</em>`;
+                return;
+            }
+            
+            // Pick a random interesting rumor (prefer ones with more tags)
+            const sortedByTags = otdRumors.sort((a, b) => (b.tags?.length || 0) - (a.tags?.length || 0));
+            const topRumor = sortedByTags[0];
+            
+            const rumorDate = new Date(topRumor.archive_date + 'T12:00:00');
+            const dateStr = rumorDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            
+            // Truncate text if too long
+            let displayText = topRumor.text;
+            if (displayText.length > 300) {
+                displayText = displayText.substring(0, 300) + '...';
+            }
+            
+            content.innerHTML = `
+                <strong>${dateStr}</strong> (${otdRumors.length} rumors that day)<br><br>
+                "${displayText}"<br><br>
+                <span style="opacity: 0.8;">— via ${topRumor.outlet || 'Unknown'}</span>
+                <a href="#" onclick="searchFromOTD('${topRumor.tags?.[0]?.replace(/'/g, "\\'")}'); return false;" style="margin-left: 15px;">
+                    Search related →
+                </a>
+            `;
+        }
+        
+        function searchFromOTD(tag) {
+            if (tag && tag !== 'undefined') {
+                document.getElementById('searchBox').value = tag;
+                handleSearch();
+                window.scrollTo({top: 0, behavior: 'smooth'});
+            }
+        }
+        
+        function initOnThisDay() {
+            // Show 1 year ago by default
+            const today = new Date();
+            const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
+            const targetDateStr = oneYearAgo.toISOString().split('T')[0];
+            
+            const startDate = new Date(oneYearAgo.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const endDate = new Date(oneYearAgo.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            
+            const otdRumors = allRumors.filter(r => 
+                r.archive_date >= startDate && r.archive_date <= endDate
+            );
+            
+            const content = document.getElementById('otdContent');
+            
+            if (otdRumors.length === 0) {
+                content.innerHTML = `<em>No rumors found from one year ago.</em>`;
+                return;
+            }
+            
+            const sortedByTags = otdRumors.sort((a, b) => (b.tags?.length || 0) - (a.tags?.length || 0));
+            const topRumor = sortedByTags[0];
+            
+            const rumorDate = new Date(topRumor.archive_date + 'T12:00:00');
+            const dateStr = rumorDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
+            
+            let displayText = topRumor.text;
+            if (displayText.length > 300) {
+                displayText = displayText.substring(0, 300) + '...';
+            }
+            
+            content.innerHTML = `
+                <strong>${dateStr}</strong> (${otdRumors.length} rumors that day)<br><br>
+                "${displayText}"<br><br>
+                <span style="opacity: 0.8;">— via ${topRumor.outlet || 'Unknown'}</span>
+                <a href="#" onclick="searchFromOTD('${topRumor.tags?.[0]?.replace(/'/g, "\\'")}'); return false;" style="margin-left: 15px;">
+                    Search related →
+                </a>
+            `;
+        }
+        
+        // Rankings calculations
+        function calculateRankings() {
+            const now = new Date();
+            const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+            const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+            
+            // Filter rumors by time period
+            const lastMonth = allRumors.filter(r => r.archive_date >= oneMonthAgo);
+            const lastYear = allRumors.filter(r => r.archive_date >= oneYearAgo);
+            
+            // Calculate player rankings
+            calculateTagRankings(lastMonth, 'player', 'rankingPlayersMonth');
+            calculateTagRankings(lastYear, 'player', 'rankingPlayersYear');
+            calculateTagRankings(allRumors, 'player', 'rankingPlayersAllTime');
+            
+            // Calculate team rankings
+            calculateTagRankings(lastMonth, 'team', 'rankingTeamsMonth');
+            calculateTagRankings(lastYear, 'team', 'rankingTeamsYear');
+            calculateTagRankings(allRumors, 'team', 'rankingTeamsAllTime');
+        }
+        
+        function calculateTagRankings(rumors, type, elementId) {
+            const tagCounts = {};
+            
+            rumors.forEach(rumor => {
+                (rumor.tags || []).forEach(tag => {
+                    const isTeam = nbaTeams.includes(tag);
+                    
+                    if (type === 'team' && isTeam) {
+                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    } else if (type === 'player' && !isTeam && !isNonPlayerTag(tag)) {
+                        tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    }
+                });
+            });
+            
+            const sorted = Object.entries(tagCounts)
+                .sort((a, b) => b[1] - a[1])
+                .slice(0, 10);
+            
+            const element = document.getElementById(elementId);
+            
+            if (sorted.length === 0) {
+                element.innerHTML = '<em>No data available</em>';
+                return;
+            }
+            
+            element.innerHTML = sorted.map(([name, count], index) => {
+                const posClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
+                const logo = type === 'team' ? teamLogos[name] : null;
+                
+                return `
+                    <div class="ranking-item" onclick="searchTag('${name.replace(/'/g, "\\'")}')">
+                        <div class="ranking-position ${posClass}">${index + 1}</div>
+                        ${logo ? `<img src="${logo}" class="ranking-logo" alt="${name}" onerror="this.style.display='none'">` : ''}
+                        <div class="ranking-name">${name}</div>
+                        <div class="ranking-count">${count.toLocaleString()}</div>
+                    </div>
+                `;
+            }).join('');
+        }
+        
+        function isNonPlayerTag(tag) {
+            const nonPlayerTags = [
+                'Trade Rumors', 'Free Agency', 'Injuries', 'NBA Draft', 'Contracts',
+                'Coaching', 'Front Office', 'Suspensions', 'Retirements', 'G League',
+                'International', 'Awards', 'All-Star', 'Playoffs', 'Finals',
+                'Summer League', 'Training Camp', 'Preseason'
+            ];
+            return nonPlayerTags.some(t => tag.toLowerCase().includes(t.toLowerCase()));
+        }
+        
         
         // Load data with progressive loading (handles multi-part files)
         async function loadData() {
@@ -534,7 +1198,7 @@
                     
                     // Calculate trending and display immediately
                     calculateTrending();
-                    updateStats();
+                    initOnThisDay();
                     filteredRumors = allRumors;
                     displayPage(1);
                     
@@ -562,7 +1226,6 @@
                             });
                             
                             // Update display
-                            updateStats();
                             if (document.getElementById('searchBox').value.trim() === '') {
                                 filteredRumors = allRumors;
                                 if (currentPage === 1) {
@@ -598,7 +1261,8 @@
                     console.log(`Loaded ${allRumors.length} total rumors`);
                     
                     calculateTrending();
-                    updateStats();
+                    initOnThisDay();
+                    calculateRankings();
                     filteredRumors = allRumors;
                     displayPage(1);
                 }
@@ -813,6 +1477,7 @@
                 document.getElementById('resultsHeader').textContent = 'All Rumors';
                 hideRelatedTags();
                 hideChart();
+                hideSearchRankings();
             } else {
                 // Split by commas or spaces
                 const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
@@ -834,23 +1499,13 @@
                 
                 // Generate historical chart
                 generateHistoricalChart(searchTerms);
+                
+                // Calculate and show rankings
+                calculateSearchRankings(searchTerms);
             }
             
             currentPage = 1;
-            updateStats();
             displayPage(1);
-        }
-        
-        function updateStats() {
-            document.getElementById('totalRumors').textContent = allRumors.length.toLocaleString();
-            document.getElementById('filteredRumors').textContent = filteredRumors.length.toLocaleString();
-            
-            if (allRumors.length > 0) {
-                const oldestDate = new Date(allRumors[allRumors.length - 1].archive_date);
-                const newestDate = new Date(allRumors[0].archive_date);
-                const years = Math.floor((newestDate - oldestDate) / (365 * 24 * 60 * 60 * 1000));
-                document.getElementById('dateRange').textContent = `${years}+`;
-            }
         }
         
         function displayPage(page) {
@@ -902,8 +1557,15 @@
                 const sentiment = analyzeSentiment(rumor.text);
                 const sentimentLabel = getSentimentLabel(sentiment);
                 
+                // Get team badge
+                const teamInfo = getTeamInfo(rumor.tags);
+                const teamBadgeHTML = teamInfo ? 
+                    `<div class="team-badge" style="background: ${teamInfo.color};">${teamInfo.abbrev}</div>` : 
+                    `<div class="team-badge" style="background: #666;">NBA</div>`;
+                
                 return `
                 <div class="rumor-card">
+                    ${teamBadgeHTML}
                     <div class="rumor-date">${displayDate || ''}${sentimentLabel}</div>
                     <div class="rumor-text">${displayText}</div>
                     <div class="rumor-meta">
@@ -1035,6 +1697,10 @@
             // Sort by date - show ALL months from first to last
             const sortedMonths = Object.keys(monthCounts).sort();
             
+            console.log('[CHART DEBUG] Total months:', sortedMonths.length);
+            console.log('[CHART DEBUG] First month:', sortedMonths[0]);
+            console.log('[CHART DEBUG] Last month:', sortedMonths[sortedMonths.length - 1]);
+            
             // Find first and last date for the header
             const firstMonth = sortedMonths[0];
             const lastMonth = sortedMonths[sortedMonths.length - 1];
@@ -1124,6 +1790,121 @@
                 historyChart.destroy();
                 historyChart = null;
             }
+        }
+        
+        // Search Rankings Functions
+        function calculateSearchRankings(searchTerms) {
+            if (!searchTerms || searchTerms.length === 0 || filteredRumors.length < 5) {
+                hideSearchRankings();
+                return;
+            }
+            
+            // Find the matching tag (player or team)
+            const searchQuery = searchTerms.join(' ').toLowerCase();
+            let matchedTag = null;
+            let isTeam = false;
+            
+            // Check if search matches a team
+            for (const team of nbaTeams) {
+                if (team.toLowerCase().includes(searchQuery) || searchQuery.includes(team.toLowerCase().split(' ').pop())) {
+                    matchedTag = team;
+                    isTeam = true;
+                    break;
+                }
+            }
+            
+            // If not a team, look for player in tags
+            if (!matchedTag) {
+                const tagCounts = {};
+                filteredRumors.forEach(r => {
+                    (r.tags || []).forEach(tag => {
+                        if (!nbaTeams.includes(tag) && tag.toLowerCase().includes(searchQuery)) {
+                            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                        }
+                    });
+                });
+                const sorted = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+                if (sorted.length > 0) {
+                    matchedTag = sorted[0][0];
+                }
+            }
+            
+            if (!matchedTag) {
+                hideSearchRankings();
+                return;
+            }
+            
+            // Calculate rankings for different periods
+            const now = new Date();
+            const oneWeekAgo = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const oneMonthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate()).toISOString().split('T')[0];
+            const oneYearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate()).toISOString().split('T')[0];
+            
+            const periods = [
+                { name: 'Past Week', after: oneWeekAgo },
+                { name: 'Past Month', after: oneMonthAgo },
+                { name: 'Past Year', after: oneYearAgo }
+            ];
+            
+            const rankings = periods.map(period => {
+                const periodRumors = allRumors.filter(r => r.archive_date >= period.after);
+                
+                // Count all tags in this period
+                const tagCounts = {};
+                periodRumors.forEach(r => {
+                    (r.tags || []).forEach(tag => {
+                        // Filter by same type (team or player)
+                        if (isTeam && nbaTeams.includes(tag)) {
+                            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                        } else if (!isTeam && !nbaTeams.includes(tag)) {
+                            tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                        }
+                    });
+                });
+                
+                // Sort and find rank
+                const sorted = Object.entries(tagCounts).sort((a, b) => b[1] - a[1]);
+                const rank = sorted.findIndex(([tag]) => tag === matchedTag) + 1;
+                const mentions = tagCounts[matchedTag] || 0;
+                const total = sorted.length;
+                
+                return {
+                    period: period.name,
+                    rank: rank || 'N/A',
+                    mentions: mentions,
+                    total: total
+                };
+            });
+            
+            // Display rankings
+            const section = document.getElementById('searchRankingsSection');
+            const header = document.getElementById('searchRankingsHeader');
+            const grid = document.getElementById('searchRankingsGrid');
+            
+            header.innerHTML = `🏆 "${matchedTag}" Rankings ${isTeam ? '(Team)' : '(Player)'}`;
+            
+            grid.innerHTML = rankings.map(r => {
+                const rankClass = r.rank === 1 ? 'top1' : r.rank === 2 ? 'top2' : r.rank === 3 ? 'top3' : r.rank <= 10 ? 'top10' : '';
+                const suffix = r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th';
+                
+                return `
+                    <div class="ranking-card">
+                        <div class="ranking-period">${r.period}</div>
+                        <div class="ranking-position ${rankClass}">
+                            ${r.rank !== 'N/A' ? r.rank : '—'}<span class="ranking-suffix">${r.rank !== 'N/A' ? suffix : ''}</span>
+                        </div>
+                        <div class="ranking-mentions">
+                            <strong>${r.mentions.toLocaleString()}</strong> mentions
+                        </div>
+                    </div>
+                `;
+            }).join('');
+            
+            section.style.display = 'block';
+        }
+        
+        function hideSearchRankings() {
+            document.getElementById('searchRankingsSection').style.display = 'none';
         }
         
         // Load on page load
