@@ -181,7 +181,7 @@
         .rumor-card {
             background: white;
             padding: 20px;
-            padding-left: 70px;
+            padding-right: 80px;
             margin-bottom: 2px;
             transition: background 0.2s;
             position: relative;
@@ -197,21 +197,19 @@
             border-radius: 0 0 8px 8px;
         }
         
-        .team-badge {
+        .team-logo-right {
             position: absolute;
-            left: 15px;
-            top: 20px;
-            width: 42px;
-            height: 42px;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: bold;
-            font-size: 14px;
-            color: white;
-            text-shadow: 0 1px 2px rgba(0,0,0,0.3);
-            box-shadow: 0 2px 4px rgba(0,0,0,0.2);
+            right: 15px;
+            top: 50%;
+            transform: translateY(-50%);
+            width: 50px;
+            height: 50px;
+            opacity: 0.7;
+            transition: opacity 0.2s;
+        }
+        
+        .rumor-card:hover .team-logo-right {
+            opacity: 1;
         }
         
         .rumor-date {
@@ -753,17 +751,18 @@
         }
         
         .ranking-position {
-            font-size: 42px;
+            font-size: 52px;
             font-weight: bold;
             color: #333;
             margin-bottom: 5px;
             line-height: 1;
+            text-shadow: 1px 1px 0 rgba(0,0,0,0.1);
         }
         
-        .ranking-position.top1 { color: #f1c40f; }
-        .ranking-position.top2 { color: #95a5a6; }
-        .ranking-position.top3 { color: #cd6133; }
-        .ranking-position.top10 { color: #e74c3c; }
+        .ranking-position.top1 { color: #f1c40f; text-shadow: 1px 1px 0 #c9a400; }
+        .ranking-position.top2 { color: #95a5a6; text-shadow: 1px 1px 0 #7f8c8d; }
+        .ranking-position.top3 { color: #cd6133; text-shadow: 1px 1px 0 #a04d28; }
+        .ranking-position.top10 { color: #e74c3c; text-shadow: 1px 1px 0 #c0392b; }
         
         .ranking-suffix {
             font-size: 18px;
@@ -802,7 +801,7 @@
         
         <!-- Trending Section -->
         <div class="trending-section" id="trendingSection">
-            <div class="trending-header">🔥 Trending in Last 24 Hours</div>
+            <div class="trending-header">🔥 Trending (Last 48 Hours)</div>
             <div class="trending-grid">
                 <div class="trending-box">
                     <h3>Top 5 Players</h3>
@@ -817,17 +816,6 @@
                     <div id="trendingTopics">Loading...</div>
                 </div>
             </div>
-        </div>
-        
-        <!-- On This Day Section -->
-        <div class="on-this-day-section" id="onThisDaySection">
-            <div class="on-this-day-header">📅 On This Day in NBA Rumors</div>
-            <div class="on-this-day-tabs">
-                <button class="otd-tab active" onclick="showOnThisDay(1)">1 Year Ago</button>
-                <button class="otd-tab" onclick="showOnThisDay(5)">5 Years Ago</button>
-                <button class="otd-tab" onclick="showOnThisDay(10)">10 Years Ago</button>
-            </div>
-            <div class="otd-content" id="otdContent">Loading...</div>
         </div>
         
         <!-- Results -->
@@ -862,6 +850,17 @@
             <div class="rankings-grid" id="searchRankingsGrid">
                 <!-- Filled dynamically -->
             </div>
+        </div>
+        
+        <!-- On This Day Section (moved to bottom, shows when searching) -->
+        <div class="on-this-day-section" id="onThisDaySection" style="display: none;">
+            <div class="on-this-day-header" id="otdHeader">📅 On This Day in NBA Rumors</div>
+            <div class="on-this-day-tabs">
+                <button class="otd-tab active" onclick="showOnThisDay(1)">1 Year Ago</button>
+                <button class="otd-tab" onclick="showOnThisDay(5)">5 Years Ago</button>
+                <button class="otd-tab" onclick="showOnThisDay(10)">10 Years Ago</button>
+            </div>
+            <div class="otd-content" id="otdContent">Loading...</div>
         </div>
     </div>
     
@@ -993,32 +992,50 @@
             return null;
         }
         
-        // On This Day functionality
+        // Current search terms (used by On This Day)
+        let currentSearchTerms = [];
+        
+        // On This Day functionality - filtered by current search
         function showOnThisDay(yearsAgo) {
             // Update active tab
             document.querySelectorAll('.otd-tab').forEach(tab => tab.classList.remove('active'));
-            event.target.classList.add('active');
+            if (event && event.target) {
+                event.target.classList.add('active');
+            }
             
             const today = new Date();
             const targetDate = new Date(today.getFullYear() - yearsAgo, today.getMonth(), today.getDate());
             const targetDateStr = targetDate.toISOString().split('T')[0];
             
-            // Find rumors from that date (allow +/- 2 days)
-            const startDate = new Date(targetDate.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-            const endDate = new Date(targetDate.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            // Find rumors from that date (allow +/- 3 days)
+            const startDate = new Date(targetDate.getTime() - 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
+            const endDate = new Date(targetDate.getTime() + 3 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
             
-            const otdRumors = allRumors.filter(r => 
+            // Filter by date AND current search terms
+            let otdRumors = allRumors.filter(r => 
                 r.archive_date >= startDate && r.archive_date <= endDate
             );
             
+            // If we have search terms, filter by them
+            if (currentSearchTerms.length > 0) {
+                otdRumors = otdRumors.filter(rumor => {
+                    return currentSearchTerms.every(term => {
+                        const inText = rumor.text.toLowerCase().includes(term);
+                        const inTags = rumor.tags.some(tag => tag.toLowerCase().includes(term));
+                        return inText || inTags;
+                    });
+                });
+            }
+            
             const content = document.getElementById('otdContent');
+            const searchText = currentSearchTerms.length > 0 ? ` about "${currentSearchTerms.join(' + ')}"` : '';
             
             if (otdRumors.length === 0) {
-                content.innerHTML = `<em>No rumors found from ${targetDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.</em>`;
+                content.innerHTML = `<em>No rumors found${searchText} from ${targetDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}.</em>`;
                 return;
             }
             
-            // Pick a random interesting rumor (prefer ones with more tags)
+            // Pick the most relevant rumor (prefer ones with more tags)
             const sortedByTags = otdRumors.sort((a, b) => (b.tags?.length || 0) - (a.tags?.length || 0));
             const topRumor = sortedByTags[0];
             
@@ -1032,63 +1049,27 @@
             }
             
             content.innerHTML = `
-                <strong>${dateStr}</strong> (${otdRumors.length} rumors that day)<br><br>
+                <strong>${dateStr}</strong> (${otdRumors.length} rumors${searchText} that day)<br><br>
                 "${displayText}"<br><br>
                 <span style="opacity: 0.8;">— via ${topRumor.outlet || 'Unknown'}</span>
-                <a href="#" onclick="searchFromOTD('${topRumor.tags?.[0]?.replace(/'/g, "\\'")}'); return false;" style="margin-left: 15px;">
-                    Search related →
-                </a>
             `;
         }
         
-        function searchFromOTD(tag) {
-            if (tag && tag !== 'undefined') {
-                document.getElementById('searchBox').value = tag;
-                handleSearch();
-                window.scrollTo({top: 0, behavior: 'smooth'});
+        function updateOnThisDay() {
+            // Only show On This Day when searching
+            const section = document.getElementById('onThisDaySection');
+            const header = document.getElementById('otdHeader');
+            
+            if (currentSearchTerms.length > 0) {
+                const searchText = currentSearchTerms.join(' + ');
+                header.innerHTML = `📅 On This Day: "${searchText}"`;
+                section.style.display = 'block';
+                showOnThisDay(1); // Default to 1 year ago
+            } else {
+                section.style.display = 'none';
             }
         }
         
-        function initOnThisDay() {
-            // Show 1 year ago by default
-            const today = new Date();
-            const oneYearAgo = new Date(today.getFullYear() - 1, today.getMonth(), today.getDate());
-            const targetDateStr = oneYearAgo.toISOString().split('T')[0];
-            
-            const startDate = new Date(oneYearAgo.getTime() - 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-            const endDate = new Date(oneYearAgo.getTime() + 2 * 24 * 60 * 60 * 1000).toISOString().split('T')[0];
-            
-            const otdRumors = allRumors.filter(r => 
-                r.archive_date >= startDate && r.archive_date <= endDate
-            );
-            
-            const content = document.getElementById('otdContent');
-            
-            if (otdRumors.length === 0) {
-                content.innerHTML = `<em>No rumors found from one year ago.</em>`;
-                return;
-            }
-            
-            const sortedByTags = otdRumors.sort((a, b) => (b.tags?.length || 0) - (a.tags?.length || 0));
-            const topRumor = sortedByTags[0];
-            
-            const rumorDate = new Date(topRumor.archive_date + 'T12:00:00');
-            const dateStr = rumorDate.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' });
-            
-            let displayText = topRumor.text;
-            if (displayText.length > 300) {
-                displayText = displayText.substring(0, 300) + '...';
-            }
-            
-            content.innerHTML = `
-                <strong>${dateStr}</strong> (${otdRumors.length} rumors that day)<br><br>
-                "${displayText}"<br><br>
-                <span style="opacity: 0.8;">— via ${topRumor.outlet || 'Unknown'}</span>
-                <a href="#" onclick="searchFromOTD('${topRumor.tags?.[0]?.replace(/'/g, "\\'")}'); return false;" style="margin-left: 15px;">
-                    Search related →
-                </a>
-            `;
-        }
         
         // Rankings calculations
         function calculateRankings() {
@@ -1198,7 +1179,6 @@
                     
                     // Calculate trending and display immediately
                     calculateTrending();
-                    initOnThisDay();
                     filteredRumors = allRumors;
                     displayPage(1);
                     
@@ -1261,7 +1241,6 @@
                     console.log(`Loaded ${allRumors.length} total rumors`);
                     
                     calculateTrending();
-                    initOnThisDay();
                     calculateRankings();
                     filteredRumors = allRumors;
                     displayPage(1);
@@ -1292,15 +1271,17 @@
         
         // Calculate trending from last 24 hours
         function calculateTrending() {
-            // Get yesterday's date as string (YYYY-MM-DD format)
+            // Get date from 48 hours ago (wider window for timezone safety)
             const now = new Date();
-            const yesterday = new Date(now.getTime() - 24 * 60 * 60 * 1000);
-            const yesterdayStr = yesterday.toISOString().split('T')[0];
+            const twoDaysAgo = new Date(now.getTime() - 48 * 60 * 60 * 1000);
+            const twoDaysAgoStr = twoDaysAgo.toISOString().split('T')[0];
             
-            // Filter last 24 hours using string comparison
+            // Filter last 48 hours using string comparison
             const recentRumors = allRumors.filter(r => {
-                return r.archive_date >= yesterdayStr;
+                return r.archive_date >= twoDaysAgoStr;
             });
+            
+            console.log('[TRENDING DEBUG] Recent rumors:', recentRumors.length, 'from date >=', twoDaysAgoStr);
             
             // Count tags
             const playerCounts = {};
@@ -1324,7 +1305,7 @@
                           'Utah Jazz', 'Washington Wizards'];
             
             recentRumors.forEach(rumor => {
-                rumor.tags.forEach(tag => {
+                (rumor.tags || []).forEach(tag => {
                     // Is it a team?
                     if (teams.includes(tag)) {
                         teamCounts[tag] = (teamCounts[tag] || 0) + 1;
@@ -1363,7 +1344,7 @@
             const element = document.getElementById(elementId);
             
             if (items.length === 0 || items.every(([name, count]) => count === 0)) {
-                element.innerHTML = '<div style="color: #999; font-size: 13px;">No activity in last 24 hours</div>';
+                element.innerHTML = '<div style="color: #999; font-size: 13px;">No activity in last 48 hours</div>';
                 return;
             }
             
@@ -1474,13 +1455,16 @@
             
             if (!query) {
                 filteredRumors = allRumors;
+                currentSearchTerms = [];
                 document.getElementById('resultsHeader').textContent = 'All Rumors';
                 hideRelatedTags();
                 hideChart();
                 hideSearchRankings();
+                updateOnThisDay();
             } else {
                 // Split by commas or spaces
                 const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
+                currentSearchTerms = searchTerms;
                 
                 filteredRumors = allRumors.filter(rumor => {
                     // Check if ALL search terms appear in either text or tags
@@ -1502,6 +1486,9 @@
                 
                 // Calculate and show rankings
                 calculateSearchRankings(searchTerms);
+                
+                // Update On This Day
+                updateOnThisDay();
             }
             
             currentPage = 1;
@@ -1557,15 +1544,14 @@
                 const sentiment = analyzeSentiment(rumor.text);
                 const sentimentLabel = getSentimentLabel(sentiment);
                 
-                // Get team badge
-                const teamInfo = getTeamInfo(rumor.tags);
-                const teamBadgeHTML = teamInfo ? 
-                    `<div class="team-badge" style="background: ${teamInfo.color};">${teamInfo.abbrev}</div>` : 
-                    `<div class="team-badge" style="background: #666;">NBA</div>`;
+                // Get team logo for right side
+                const teamInfo = getTeamLogo(rumor.tags);
+                const teamLogoHTML = teamInfo ? 
+                    `<img src="${teamInfo.logo}" class="team-logo-right" alt="${teamInfo.name}" onerror="this.style.display='none'">` : '';
                 
                 return `
                 <div class="rumor-card">
-                    ${teamBadgeHTML}
+                    ${teamLogoHTML}
                     <div class="rumor-date">${displayDate || ''}${sentimentLabel}</div>
                     <div class="rumor-text">${displayText}</div>
                     <div class="rumor-meta">
