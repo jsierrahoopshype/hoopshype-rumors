@@ -181,11 +181,11 @@
         .rumor-card {
             background: white;
             padding: 20px;
-            padding-right: 70px;
             margin-bottom: 2px;
             transition: background 0.2s;
             position: relative;
-            min-height: 80px;
+            display: flex;
+            gap: 20px;
         }
         
         .rumor-card:hover {
@@ -197,18 +197,31 @@
             border-radius: 0 0 8px 8px;
         }
         
+        .rumor-content {
+            flex: 1;
+            min-width: 0;
+        }
+        
+        .rumor-logo-area {
+            width: 80px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            flex-shrink: 0;
+            border-left: 1px solid #eee;
+            padding-left: 20px;
+            margin-left: 10px;
+        }
+        
         .team-logo-right {
-            position: absolute;
-            right: 12px;
-            top: 15px;
-            width: 40px;
-            height: 40px;
-            opacity: 0.25;
+            width: 60px;
+            height: 60px;
+            opacity: 0.9;
             transition: opacity 0.2s;
         }
         
         .rumor-card:hover .team-logo-right {
-            opacity: 0.5;
+            opacity: 1;
         }
         
         .rumor-date {
@@ -712,76 +725,59 @@
         /* Search Rankings Section */
         .search-rankings-section {
             background: linear-gradient(135deg, #1a1a2e 0%, #0f0f23 100%);
-            padding: 25px 30px;
+            padding: 15px 20px;
             border-radius: 8px;
-            margin-top: 30px;
-            box-shadow: 0 4px 15px rgba(0,0,0,0.2);
+            margin-top: 20px;
             display: none;
         }
         
         .search-rankings-header {
-            font-size: 18px;
+            font-size: 14px;
             font-weight: bold;
             color: #fff;
-            margin-bottom: 20px;
+            margin-bottom: 12px;
         }
         
         .rankings-grid {
             display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
-            gap: 15px;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
         }
         
         .ranking-card {
-            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
-            border-radius: 12px;
-            padding: 20px;
+            background: rgba(255,255,255,0.08);
+            border-radius: 6px;
+            padding: 10px 12px;
             text-align: center;
-            border: none;
-            transition: transform 0.2s, box-shadow 0.2s;
-            color: white;
-        }
-        
-        .ranking-card:hover {
-            transform: translateY(-2px);
-            box-shadow: 0 4px 12px rgba(0,0,0,0.3);
         }
         
         .ranking-period {
-            font-size: 11px;
-            color: rgba(255,255,255,0.7);
+            font-size: 10px;
+            color: rgba(255,255,255,0.5);
             text-transform: uppercase;
-            letter-spacing: 1px;
-            margin-bottom: 8px;
+            letter-spacing: 0.5px;
+            margin-bottom: 4px;
         }
         
         .ranking-position {
-            font-size: 56px;
+            font-size: 16px;
             font-weight: bold;
             color: #fff;
-            margin-bottom: 5px;
-            line-height: 1;
-            text-shadow: 2px 2px 4px rgba(0,0,0,0.3);
         }
         
-        .ranking-position.top1 { color: #ffd700; text-shadow: 0 0 20px rgba(255,215,0,0.5); }
-        .ranking-position.top2 { color: #c0c0c0; text-shadow: 0 0 15px rgba(192,192,192,0.5); }
-        .ranking-position.top3 { color: #cd7f32; text-shadow: 0 0 15px rgba(205,127,50,0.5); }
-        .ranking-position.top10 { color: #e74c3c; text-shadow: 0 0 10px rgba(231,76,60,0.5); }
+        .ranking-position.top1 { color: #ffd700; }
+        .ranking-position.top2 { color: #c0c0c0; }
+        .ranking-position.top3 { color: #cd7f32; }
+        .ranking-position.top10 { color: #e74c3c; }
         
         .ranking-suffix {
-            font-size: 18px;
+            font-size: 12px;
             font-weight: normal;
         }
         
         .ranking-mentions {
-            font-size: 13px;
-            color: rgba(255,255,255,0.7);
-            margin-top: 5px;
-        }
-        
-        .ranking-mentions strong {
-            color: #fff;
+            font-size: 12px;
+            color: rgba(255,255,255,0.5);
         }
     </style>
 </head>
@@ -1206,12 +1202,24 @@
                         console.log(`Background loading: ${batch.join(', ')}...`);
                         
                         try {
-                            const batchPromises = batch.map(f => fetch(f).then(r => r.json()));
+                            const batchPromises = batch.map(f => 
+                                fetch(f)
+                                    .then(r => {
+                                        if (!r.ok) throw new Error(`HTTP ${r.status}`);
+                                        return r.json();
+                                    })
+                                    .catch(err => {
+                                        console.warn(`Failed to load ${f}:`, err);
+                                        return []; // Return empty array on failure
+                                    })
+                            );
                             const batchDataArrays = await Promise.all(batchPromises);
                             
                             // Append to existing data
                             batchDataArrays.forEach(partData => {
-                                allRumors = allRumors.concat(partData);
+                                if (partData && partData.length > 0) {
+                                    allRumors = allRumors.concat(partData);
+                                }
                             });
                             
                             // Re-sort
@@ -1220,7 +1228,8 @@
                             });
                             
                             // Update display if not searching
-                            if (document.getElementById('searchBox').value.trim() === '') {
+                            const searchVal = document.getElementById('searchBox').value.trim();
+                            if (searchVal === '') {
                                 filteredRumors = allRumors;
                                 if (currentPage === 1) {
                                     displayPage(1);
@@ -1228,8 +1237,10 @@
                             }
                             
                             // Update header with progress
-                            document.getElementById('resultsHeader').innerHTML = 
-                                `<span style="color: #e74c3c;">●</span> Loading... (${allRumors.length.toLocaleString()} rumors)`;
+                            if (searchVal === '') {
+                                document.getElementById('resultsHeader').innerHTML = 
+                                    `<span style="color: #e74c3c;">●</span> Loading... (${allRumors.length.toLocaleString()} rumors)`;
+                            }
                                 
                         } catch (e) {
                             console.error(`Error loading batch:`, e);
@@ -1239,11 +1250,18 @@
                     console.log(`Loaded ${allRumors.length} total rumors`);
                     
                     // Final update
-                    document.getElementById('resultsHeader').textContent = 'All Rumors';
-                    calculateTrending();
-                    calculateRankings();
-                    filteredRumors = allRumors;
-                    displayPage(1);
+                    try {
+                        const searchVal = document.getElementById('searchBox').value.trim();
+                        if (searchVal === '') {
+                            document.getElementById('resultsHeader').textContent = 'All Rumors';
+                            calculateTrending();
+                            calculateRankings();
+                            filteredRumors = allRumors;
+                            displayPage(1);
+                        }
+                    } catch (e) {
+                        console.error('Error in final update:', e);
+                    }
                     
                     // Re-check URL search after full load
                     checkUrlSearch();
@@ -1635,22 +1653,24 @@
                 // Get team logo for right side
                 const teamInfo = getTeamLogo(rumor.tags);
                 const teamLogoHTML = teamInfo ? 
-                    `<img src="${teamInfo.logo}" class="team-logo-right" alt="${teamInfo.name}" onerror="this.style.display='none'">` : '';
+                    `<div class="rumor-logo-area"><img src="${teamInfo.logo}" class="team-logo-right" alt="${teamInfo.name}" onerror="this.parentElement.style.display='none'"></div>` : '';
                 
                 return `
                 <div class="rumor-card">
+                    <div class="rumor-content">
+                        <div class="rumor-date">${displayDate || ''}${sentimentLabel}</div>
+                        <div class="rumor-text">${displayText}</div>
+                        <div class="rumor-meta">
+                            ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
+                            ${rumor.source_url && !rumor.quote ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
+                        </div>
+                        <div class="rumor-tags">
+                            ${(rumor.tags || []).map(tag => 
+                                `<span class="rumor-tag" onclick="searchTag('${tag.replace(/'/g, "\\'")}')">${tag}</span>`
+                            ).join('')}
+                        </div>
+                    </div>
                     ${teamLogoHTML}
-                    <div class="rumor-date">${displayDate || ''}${sentimentLabel}</div>
-                    <div class="rumor-text">${displayText}</div>
-                    <div class="rumor-meta">
-                        ${rumor.outlet ? `<span class="rumor-outlet">via ${rumor.outlet}</span>` : ''}
-                        ${rumor.source_url && !rumor.quote ? `<a href="${rumor.source_url}" target="_blank" class="rumor-source">Read Source →</a>` : ''}
-                    </div>
-                    <div class="rumor-tags">
-                        ${(rumor.tags || []).map(tag => 
-                            `<span class="rumor-tag" onclick="searchTag('${tag.replace(/'/g, "\\'")}')">${tag}</span>`
-                        ).join('')}
-                    </div>
                 </div>
             `}).join('');
             
@@ -1980,16 +2000,13 @@
             grid.innerHTML = rankings.map(r => {
                 const rankClass = r.rank === 1 ? 'top1' : r.rank === 2 ? 'top2' : r.rank === 3 ? 'top3' : r.rank <= 10 ? 'top10' : '';
                 const suffix = r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th';
+                const rankText = r.rank !== 'N/A' ? `#${r.rank}` : '—';
                 
                 return `
                     <div class="ranking-card">
                         <div class="ranking-period">${r.period}</div>
-                        <div class="ranking-position ${rankClass}">
-                            ${r.rank !== 'N/A' ? r.rank : '—'}<span class="ranking-suffix">${r.rank !== 'N/A' ? suffix : ''}</span>
-                        </div>
-                        <div class="ranking-mentions">
-                            <strong>${r.mentions.toLocaleString()}</strong> mentions
-                        </div>
+                        <div class="ranking-position ${rankClass}">${rankText}</div>
+                        <div class="ranking-mentions">${r.mentions.toLocaleString()} mentions</div>
                     </div>
                 `;
             }).join('');
