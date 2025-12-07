@@ -1153,38 +1153,53 @@
                 }
                 
                 if (indexResponse && indexResponse.ok) {
-                    // Multi-part mode - load files sequentially
                     const index = await indexResponse.json();
                     const files = index.files;
                     
-                    console.log(`Loading ${files.length} files...`);
+                    // STEP 1: Load just the last file (most recent) - instant display
+                    const lastFile = files[files.length - 1];
+                    console.log(`Quick load: ${lastFile}`);
                     
-                    // Load files one by one (more reliable than parallel)
-                    for (const file of files) {
-                        try {
-                            const response = await fetch(file);
-                            if (response.ok) {
-                                const data = await response.json();
-                                allRumors = allRumors.concat(data);
-                                console.log(`Loaded ${file}: ${data.length} rumors`);
-                            }
-                        } catch (e) {
-                            console.warn(`Failed to load ${file}`);
-                        }
-                    }
+                    const firstResponse = await fetch(lastFile);
+                    if (!firstResponse.ok) throw new Error('Failed to load recent data');
                     
-                    // Sort by date - newest to oldest
-                    allRumors.sort((a, b) => {
-                        return new Date(b.archive_date) - new Date(a.archive_date);
-                    });
+                    allRumors = await firstResponse.json();
+                    allRumors.sort((a, b) => new Date(b.archive_date) - new Date(a.archive_date));
                     
-                    console.log(`Total: ${allRumors.length} rumors`);
-                    
-                    // Display
-                    calculateTrending();
-                    calculateRankings();
+                    // Display immediately!
                     filteredRumors = allRumors;
+                    calculateTrending();
                     displayPage(1);
+                    console.log(`Showing ${allRumors.length} recent rumors`);
+                    
+                    // STEP 2: Load remaining files in background (don't await)
+                    const otherFiles = files.slice(0, -1);
+                    
+                    // Background load function
+                    const loadRemaining = async () => {
+                        for (const file of otherFiles) {
+                            try {
+                                const resp = await fetch(file);
+                                if (resp.ok) {
+                                    const data = await resp.json();
+                                    allRumors = allRumors.concat(data);
+                                }
+                            } catch (e) {
+                                console.warn(`Skipped ${file}`);
+                            }
+                        }
+                        // Sort and refresh after all loaded
+                        allRumors.sort((a, b) => new Date(b.archive_date) - new Date(a.archive_date));
+                        filteredRumors = allRumors;
+                        calculateTrending();
+                        calculateRankings();
+                        console.log(`Full archive: ${allRumors.length} rumors`);
+                    };
+                    
+                    // Start background load without blocking
+                    loadRemaining();
+                    
+                    // Check URL search
                     checkUrlSearch();
                 } else {
                     // Single file mode (fallback)
