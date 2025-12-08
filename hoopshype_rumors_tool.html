@@ -1105,7 +1105,7 @@
                     
                     if (type === 'team' && isTeam) {
                         tagCounts[tag] = (tagCounts[tag] || 0) + 1;
-                    } else if (type === 'player' && !isTeam && !isNonPlayerTag(tag)) {
+                    } else if (type === 'player' && !isTeam && !isNonPlayerTag(tag) && tag.trim().split(/\s+/).length >= 2) {
                         tagCounts[tag] = (tagCounts[tag] || 0) + 1;
                     }
                 });
@@ -1152,7 +1152,41 @@
         // Load data with progressive loading (handles multi-part files)
         async function loadData() {
             try {
-                // Try loading index for multi-part files
+                // STEP 1: Try loading tiny latest.json first (instant display)
+                try {
+                    const latestResponse = await fetch('hoopshype_rumors_latest.json');
+                    if (latestResponse.ok) {
+                        allRumors = await latestResponse.json();
+                        
+                        // Add high indices for newest rumors
+                        allRumors.forEach((r, i) => r._loadIndex = 100000000 + i);
+                        
+                        // Sort newest first
+                        allRumors.sort((a, b) => {
+                            const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
+                            if (dateCompare !== 0) return dateCompare;
+                            return b._loadIndex - a._loadIndex;
+                        });
+                        
+                        // DISPLAY IMMEDIATELY!
+                        filteredRumors = allRumors;
+                        displayPage(1);
+                        calculateTrending();
+                        console.log(`⚡ INSTANT: Showing ${allRumors.length} latest rumors`);
+                        
+                        // Setup handlers NOW
+                        setupSearchHandlers();
+                        checkUrlSearch();
+                        
+                        // Load full archive in background
+                        setTimeout(() => loadFullArchive(), 50);
+                        return;
+                    }
+                } catch (e) {
+                    console.log('No latest.json, trying full load...');
+                }
+                
+                // FALLBACK: Load from index
                 let indexResponse;
                 try {
                     indexResponse = await fetch('rumors_index.json');
@@ -1164,7 +1198,7 @@
                     const index = await indexResponse.json();
                     const files = index.files;
                     
-                    // PRIORITY: Load ONLY the most recent file FIRST - display INSTANTLY
+                    // Load last file first
                     const lastFile = files[files.length - 1];
                     console.log(`⚡ Quick loading: ${lastFile}`);
                     
@@ -1172,19 +1206,13 @@
                         const firstResponse = await fetch(lastFile);
                         if (firstResponse.ok) {
                             allRumors = await firstResponse.json();
-                            
-                            // Add high load index for secondary sort (part7 = newest file)
-                            // Use offset of 10 million so part7 items always win tiebreaker
                             allRumors.forEach((r, i) => r._loadIndex = 10000000 + i);
-                            
-                            // Sort by date DESC, then by load index DESC (newest first within same day)
                             allRumors.sort((a, b) => {
                                 const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
                                 if (dateCompare !== 0) return dateCompare;
-                                return b._loadIndex - a._loadIndex; // Higher index = newer
+                                return b._loadIndex - a._loadIndex;
                             });
                             
-                            // DISPLAY IMMEDIATELY - don't wait for anything else!
                             filteredRumors = allRumors;
                             displayPage(1);
                             calculateTrending();
@@ -1194,17 +1222,14 @@
                         console.error('Failed to load recent file:', e);
                     }
                     
-                    // Setup search handlers NOW (don't wait for full load)
                     setupSearchHandlers();
-                    
-                    // Check URL search NOW
                     checkUrlSearch();
                     
-                    // BACKGROUND: Load remaining files slowly - don't block anything
+                    // Load remaining files in background
                     const otherFiles = files.slice(0, -1);
                     setTimeout(() => {
                         loadRemainingFiles(otherFiles);
-                    }, 100); // Small delay to ensure UI is responsive
+                    }, 100);
                     
                 } else {
                     // Single file mode (fallback)
@@ -1271,6 +1296,62 @@
             calculateTrending();
             calculateRankings();
             console.log(`✅ Full archive loaded: ${allRumors.length} rumors`);
+        }
+        
+        // Load full archive after instant display from latest.json
+        async function loadFullArchive() {
+            try {
+                const indexResponse = await fetch('rumors_index.json');
+                if (!indexResponse.ok) return;
+                
+                const index = await indexResponse.json();
+                const files = index.files;
+                
+                // Keep the latest rumors we already have
+                const latestRumors = [...allRumors];
+                const latestTexts = new Set(latestRumors.map(r => r.text?.slice(0, 100)));
+                
+                let baseIndex = 0;
+                
+                for (const file of files) {
+                    try {
+                        const resp = await fetch(file);
+                        if (resp.ok) {
+                            const data = await resp.json();
+                            
+                            // Filter out duplicates (already in latest)
+                            const newRumors = data.filter(r => !latestTexts.has(r.text?.slice(0, 100)));
+                            
+                            newRumors.forEach((r, i) => r._loadIndex = baseIndex + i);
+                            baseIndex += newRumors.length;
+                            
+                            allRumors = allRumors.concat(newRumors);
+                            console.log(`📦 Loaded ${file}`);
+                        }
+                    } catch (e) {
+                        console.warn(`Skipped ${file}`);
+                    }
+                }
+                
+                // Sort all rumors
+                allRumors.sort((a, b) => {
+                    const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
+                    if (dateCompare !== 0) return dateCompare;
+                    return (b._loadIndex || 0) - (a._loadIndex || 0);
+                });
+                
+                // Update filtered if not searching
+                if (document.getElementById('searchBox').value.trim() === '') {
+                    filteredRumors = allRumors;
+                }
+                
+                calculateTrending();
+                calculateRankings();
+                console.log(`✅ Full archive loaded: ${allRumors.length} rumors`);
+                
+            } catch (e) {
+                console.error('Error loading full archive:', e);
+            }
         }
         
         // Setup search handlers
