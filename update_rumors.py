@@ -2,16 +2,26 @@
 """
 HoopsHype Rumors Incremental Updater
 Scrapes only NEW rumors since last update and appends to database
-Runs 4x daily via GitHub Actions
+Runs hourly via GitHub Actions
 """
 
 import requests
 from bs4 import BeautifulSoup
 import json
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 import time
 import sys
 import os
+
+# US Eastern timezone offset (UTC-5, or UTC-4 during DST)
+# Using -5 to be safe (EST)
+US_EASTERN_OFFSET = timedelta(hours=-5)
+
+def get_us_eastern_now():
+    """Get current time in US Eastern timezone"""
+    utc_now = datetime.now(timezone.utc)
+    eastern_now = utc_now + US_EASTERN_OFFSET
+    return eastern_now.replace(tzinfo=None)  # Remove tzinfo for compatibility
 
 def load_existing_rumors():
     """Load all existing rumors to check for duplicates"""
@@ -59,13 +69,13 @@ def load_latest_date():
     
     if latest_date is None:
         print("No database files found, starting from yesterday")
-        return datetime.now() - timedelta(days=1)
+        return get_us_eastern_now() - timedelta(days=1)
     
     return latest_date
 
 def scrape_rumors_for_date(date_obj):
     """Scrape all rumors from a specific date"""
-    today = datetime.now().date()
+    today = get_us_eastern_now().date()
     target_date = date_obj.date()
     
     # Authentication for preview site
@@ -95,7 +105,7 @@ def scrape_rumors_for_date(date_obj):
         for idx, rumor_div in enumerate(rumor_divs):
             rumor_data = {
                 'date': '',
-                'archive_date': date_obj.strftime('%Y-%m-%d'),
+                'archive_date': date_obj.strftime('%Y-%m-%d'),  # Default to scrape date
                 'text': '',
                 'quote': '',
                 'outlet': '',
@@ -103,10 +113,26 @@ def scrape_rumors_for_date(date_obj):
                 'tags': []
             }
             
-            # Get display date
+            # Get display date and try to parse it for accurate archive_date
             date_span = rumor_div.find('span', class_='date')
             if date_span:
-                rumor_data['date'] = date_span.get_text(strip=True)
+                date_text = date_span.get_text(strip=True)
+                rumor_data['date'] = date_text
+                
+                # Try to parse the actual date (format: "Dec. 07, 2025, 4:55 AM GMT+1")
+                try:
+                    # Remove timezone info for parsing
+                    date_clean = date_text.split('GMT')[0].strip().rstrip(',')
+                    # Try parsing "Dec. 07, 2025, 4:55 AM" or similar
+                    for fmt in ['%b. %d, %Y, %I:%M %p', '%b %d, %Y, %I:%M %p', '%B %d, %Y, %I:%M %p']:
+                        try:
+                            parsed_date = datetime.strptime(date_clean, fmt)
+                            rumor_data['archive_date'] = parsed_date.strftime('%Y-%m-%d')
+                            break
+                        except ValueError:
+                            continue
+                except:
+                    pass  # Keep default archive_date if parsing fails
             
             # Get rumor text - preview site uses 'rumortext' class, not 'rumor-content'
             rumor_text_p = rumor_div.find('p', class_='rumortext')
@@ -172,9 +198,13 @@ def main():
     print("HOOPSHYPE RUMORS INCREMENTAL UPDATER")
     print("=" * 60)
     
+    # Show current time for debugging
+    eastern_now = get_us_eastern_now()
+    print(f"\nCurrent time (US Eastern): {eastern_now.strftime('%Y-%m-%d %H:%M:%S')}")
+    
     # Load existing rumors to check for duplicates
     existing_texts = load_existing_rumors()
-    print(f"\nLoaded {len(existing_texts)} existing rumor fingerprints")
+    print(f"Loaded {len(existing_texts)} existing rumor fingerprints")
     
     # Find latest date in database
     latest_date = load_latest_date()
@@ -183,7 +213,7 @@ def main():
     # ALWAYS scrape from latest_date (not +1) through today
     # This ensures we catch new rumors posted today after previous scrape
     start_date = latest_date
-    end_date = datetime.now()
+    end_date = get_us_eastern_now()
     
     print(f"Scraping from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
     
