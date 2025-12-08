@@ -13,6 +13,26 @@ import time
 import sys
 import os
 
+def load_existing_rumors():
+    """Load all existing rumors to check for duplicates"""
+    existing_texts = set()
+    
+    for part_num in range(1, 8):
+        filename = f'hoopshype_rumors_part{part_num}.json'
+        try:
+            with open(filename, 'r', encoding='utf-8') as f:
+                rumors = json.load(f)
+                for r in rumors:
+                    # Use first 100 chars of text as fingerprint
+                    existing_texts.add(r['text'][:100] if r['text'] else '')
+        except FileNotFoundError:
+            continue
+        except Exception as e:
+            print(f"Error loading {filename}: {e}")
+            continue
+    
+    return existing_texts
+
 def load_latest_date():
     """Find the most recent date in our database by checking all parts"""
     latest_date = None
@@ -152,17 +172,18 @@ def main():
     print("HOOPSHYPE RUMORS INCREMENTAL UPDATER")
     print("=" * 60)
     
+    # Load existing rumors to check for duplicates
+    existing_texts = load_existing_rumors()
+    print(f"\nLoaded {len(existing_texts)} existing rumor fingerprints")
+    
     # Find latest date in database
     latest_date = load_latest_date()
-    print(f"\nLatest rumor in database: {latest_date.strftime('%Y-%m-%d')}")
+    print(f"Latest rumor date in database: {latest_date.strftime('%Y-%m-%d')}")
     
-    # Scrape from next day until today
-    start_date = latest_date + timedelta(days=1)
+    # ALWAYS scrape from latest_date (not +1) through today
+    # This ensures we catch new rumors posted today after previous scrape
+    start_date = latest_date
     end_date = datetime.now()
-    
-    if start_date > end_date:
-        print("\n✅ Database is already up to date!")
-        return
     
     print(f"Scraping from {start_date.strftime('%Y-%m-%d')} to {end_date.strftime('%Y-%m-%d')}")
     
@@ -176,10 +197,18 @@ def main():
         day_rumors = scrape_rumors_for_date(current_date)
         
         if day_rumors:
-            print(f"✓ Found {len(day_rumors)} rumors")
-            new_rumors.extend(day_rumors)
+            # Filter out duplicates by checking text fingerprint
+            truly_new = []
+            for rumor in day_rumors:
+                fingerprint = rumor['text'][:100] if rumor['text'] else ''
+                if fingerprint and fingerprint not in existing_texts:
+                    truly_new.append(rumor)
+                    existing_texts.add(fingerprint)  # Add to set to avoid duplicates within same run
+            
+            print(f"Found {len(day_rumors)} rumors, {len(truly_new)} are NEW")
+            new_rumors.extend(truly_new)
         else:
-            print("✗ No rumors")
+            print("No rumors found")
         
         current_date += timedelta(days=1)
         time.sleep(1)  # Be nice to the server
@@ -235,7 +264,7 @@ def main():
             print(f"Note: Could not update index file: {e}")
         
     else:
-        print(f"\n✓ No new rumors found")
+        print(f"\n✅ No new rumors found (all already in database)")
 
 if __name__ == '__main__':
     main()
