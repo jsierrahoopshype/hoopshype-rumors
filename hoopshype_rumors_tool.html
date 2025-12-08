@@ -1172,7 +1172,17 @@
                         const firstResponse = await fetch(lastFile);
                         if (firstResponse.ok) {
                             allRumors = await firstResponse.json();
-                            allRumors.sort((a, b) => new Date(b.archive_date) - new Date(a.archive_date));
+                            
+                            // Add high load index for secondary sort (part7 = newest file)
+                            // Use offset of 10 million so part7 items always win tiebreaker
+                            allRumors.forEach((r, i) => r._loadIndex = 10000000 + i);
+                            
+                            // Sort by date DESC, then by load index DESC (newest first within same day)
+                            allRumors.sort((a, b) => {
+                                const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
+                                if (dateCompare !== 0) return dateCompare;
+                                return b._loadIndex - a._loadIndex; // Higher index = newer
+                            });
                             
                             // DISPLAY IMMEDIATELY - don't wait for anything else!
                             filteredRumors = allRumors;
@@ -1200,7 +1210,14 @@
                     // Single file mode (fallback)
                     const response = await fetch('hoopshype_all_rumors.json');
                     allRumors = await response.json();
-                    allRumors.sort((a, b) => new Date(b.archive_date) - new Date(a.archive_date));
+                    
+                    // Add load index for secondary sort
+                    allRumors.forEach((r, i) => r._loadIndex = i);
+                    allRumors.sort((a, b) => {
+                        const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
+                        if (dateCompare !== 0) return dateCompare;
+                        return b._loadIndex - a._loadIndex;
+                    });
                     
                     console.log(`Loaded ${allRumors.length} total rumors`);
                     
@@ -1221,11 +1238,16 @@
         
         // Separate function for background loading
         async function loadRemainingFiles(files) {
+            let baseIndex = 0; // Lower indices = older files
+            
             for (const file of files) {
                 try {
                     const resp = await fetch(file);
                     if (resp.ok) {
                         const data = await resp.json();
+                        // Add indices (lower than part7's indices since these are older)
+                        data.forEach((r, i) => r._loadIndex = baseIndex + i);
+                        baseIndex += data.length;
                         allRumors = allRumors.concat(data);
                         console.log(`📦 Loaded ${file}`);
                     }
@@ -1234,8 +1256,12 @@
                 }
             }
             
-            // After all files loaded, sort and update
-            allRumors.sort((a, b) => new Date(b.archive_date) - new Date(a.archive_date));
+            // After all files loaded, sort by date DESC, then by loadIndex DESC
+            allRumors.sort((a, b) => {
+                const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
+                if (dateCompare !== 0) return dateCompare;
+                return (b._loadIndex || 0) - (a._loadIndex || 0);
+            });
             
             // Only refresh if user hasn't searched
             if (document.getElementById('searchBox').value.trim() === '') {
