@@ -245,13 +245,25 @@ def main():
             for part_num in range(1, 8):
                 try:
                     with open(f'hoopshype_rumors_part{part_num}.json', 'r', encoding='utf-8') as f:
-                        all_rumors_for_latest.extend(json.load(f))
+                        part_data = json.load(f)
+                        for i, r in enumerate(part_data):
+                            r['_part'] = part_num
+                            r['_idx'] = i
+                        all_rumors_for_latest.extend(part_data)
                 except:
                     pass
             
-            # Sort by date descending and take newest 100
-            all_rumors_for_latest.sort(key=lambda x: x['archive_date'], reverse=True)
+            # Sort by date DESC, then part DESC, then idx DESC
+            all_rumors_for_latest.sort(
+                key=lambda x: (x['archive_date'], x.get('_part', 0), x.get('_idx', 0)), 
+                reverse=True
+            )
             latest_100 = all_rumors_for_latest[:100]
+            
+            # Remove temp fields
+            for r in latest_100:
+                r.pop('_part', None)
+                r.pop('_idx', None)
             
             with open('hoopshype_rumors_latest.json', 'w', encoding='utf-8') as f:
                 json.dump(latest_100, f, ensure_ascii=False)
@@ -294,13 +306,27 @@ def main():
         for part_num in range(1, 8):
             try:
                 with open(f'hoopshype_rumors_part{part_num}.json', 'r', encoding='utf-8') as f:
-                    all_rumors_for_latest.extend(json.load(f))
+                    part_data = json.load(f)
+                    # Add part number and index for secondary sorting
+                    for i, r in enumerate(part_data):
+                        r['_part'] = part_num
+                        r['_idx'] = i
+                    all_rumors_for_latest.extend(part_data)
             except:
                 pass
         
         if all_rumors_for_latest:
-            all_rumors_for_latest.sort(key=lambda x: x['archive_date'], reverse=True)
+            # Sort by date DESC, then part DESC (higher = newer), then idx DESC (higher = newer within part)
+            all_rumors_for_latest.sort(
+                key=lambda x: (x['archive_date'], x.get('_part', 0), x.get('_idx', 0)), 
+                reverse=True
+            )
+            
+            # Take newest 100 and remove temp fields
             latest_100 = all_rumors_for_latest[:100]
+            for r in latest_100:
+                r.pop('_part', None)
+                r.pop('_idx', None)
             
             with open('hoopshype_rumors_latest.json', 'w', encoding='utf-8') as f:
                 json.dump(latest_100, f, ensure_ascii=False)
