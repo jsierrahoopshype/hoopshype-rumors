@@ -1158,17 +1158,13 @@
                     if (latestResponse.ok) {
                         allRumors = await latestResponse.json();
                         
-                        // Add high indices for newest rumors
-                        allRumors.forEach((r, i) => r._loadIndex = 100000000 + i);
+                        // latest.json is ALREADY sorted newest-first by Python
+                        // Just add high indices for merging with archive later
+                        // Use REVERSE index so first item (newest) has highest index
+                        const len = allRumors.length;
+                        allRumors.forEach((r, i) => r._loadIndex = 100000000 + (len - i));
                         
-                        // Sort newest first
-                        allRumors.sort((a, b) => {
-                            const dateCompare = new Date(b.archive_date) - new Date(a.archive_date);
-                            if (dateCompare !== 0) return dateCompare;
-                            return b._loadIndex - a._loadIndex;
-                        });
-                        
-                        // DISPLAY IMMEDIATELY!
+                        // DISPLAY IMMEDIATELY - no need to sort, already in order!
                         filteredRumors = allRumors;
                         displayPage(1);
                         calculateTrending();

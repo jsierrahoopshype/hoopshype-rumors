@@ -228,8 +228,9 @@ def main():
         except FileNotFoundError:
             existing_rumors = []
         
-        # Append new rumors to the last part
-        existing_rumors.extend(new_rumors)
+        # Reverse new_rumors so newest rumor gets highest index (appears first after sort)
+        # The scraper gets newest first from the page, but we want highest index = newest
+        existing_rumors.extend(reversed(new_rumors))
         
         # Save updated database
         with open(last_part, 'w', encoding='utf-8') as f:
