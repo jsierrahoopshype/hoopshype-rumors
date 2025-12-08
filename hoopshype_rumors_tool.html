@@ -678,22 +678,15 @@
         }
         
         .ranking-position {
-            width: 28px;
-            height: 28px;
-            background: #e74c3c;
-            color: white;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
             font-weight: bold;
-            font-size: 13px;
+            font-size: 14px;
             margin-right: 12px;
+            color: #333;
         }
         
-        .ranking-position.gold { background: #ffd700; color: #333; }
-        .ranking-position.silver { background: #c0c0c0; color: #333; }
-        .ranking-position.bronze { background: #cd7f32; color: white; }
+        .ranking-position.gold { color: #333; }
+        .ranking-position.silver { color: #333; }
+        .ranking-position.bronze { color: #333; }
         
         .ranking-logo {
             width: 32px;
@@ -760,11 +753,6 @@
             font-weight: bold;
             color: #333;
         }
-        
-        .ranking-position.top1 { color: #d4a000; }
-        .ranking-position.top2 { color: #666; }
-        .ranking-position.top3 { color: #a05000; }
-        .ranking-position.top10 { color: #c0392b; }
         
         .ranking-suffix {
             font-size: 12px;
@@ -1042,38 +1030,32 @@
             // Process text - make quote clickable if available
             let displayText = topRumor.text;
             if (topRumor.quote && topRumor.source_url && displayText.includes(topRumor.quote)) {
-                const quotedLink = `<a href="${topRumor.source_url}" target="_blank" style="color: #e74c3c; text-decoration: none; border-bottom: 1px dotted #e74c3c;">"${topRumor.quote}"</a>`;
+                const quotedLink = `<a href="${topRumor.source_url}" target="_blank" style="color: #ffd700; text-decoration: none; border-bottom: 1px dotted #ffd700;">"${topRumor.quote}"</a>`;
                 displayText = displayText.replace(`"${topRumor.quote}"`, quotedLink);
                 displayText = displayText.replace(topRumor.quote, quotedLink);
             }
             
-            // Build outlet link
+            // Build outlet link (white/gold colors for dark background)
             let outletHTML = '';
             if (topRumor.outlet) {
                 if (topRumor.source_url) {
-                    outletHTML = `<a href="${topRumor.source_url}" target="_blank" style="color: #666; text-decoration: none; border-bottom: 1px dotted #999;">${topRumor.outlet}</a>`;
+                    outletHTML = `<a href="${topRumor.source_url}" target="_blank" style="color: #ffd700; text-decoration: none; border-bottom: 1px dotted rgba(255,255,255,0.5);">${topRumor.outlet}</a>`;
                 } else {
                     outletHTML = topRumor.outlet;
                 }
             }
             
-            // Build tags
-            const tagsHTML = (topRumor.tags || []).map(tag => 
-                `<span class="rumor-tag" onclick="searchTag('${tag.replace(/'/g, "\\'")}')" style="font-size: 11px; padding: 3px 8px;">${tag}</span>`
-            ).join(' ');
-            
             content.innerHTML = `
-                <div style="margin-bottom: 10px;">
+                <div style="margin-bottom: 10px; color: white;">
                     <strong>${dateStr}</strong>
-                    <span style="color: #888; font-size: 12px; margin-left: 10px;">(${otdRumors.length} rumors${searchText} that day)</span>
+                    <span style="opacity: 0.8; font-size: 12px; margin-left: 10px;">(${otdRumors.length} rumors${searchText} that day)</span>
                 </div>
-                <div style="font-size: 14px; line-height: 1.6; margin-bottom: 12px;">
+                <div style="font-size: 14px; line-height: 1.6; margin-bottom: 12px; color: white;">
                     ${displayText}
                 </div>
-                <div style="margin-bottom: 10px;">
-                    ${outletHTML ? `<span style="font-size: 12px; color: #888;">via ${outletHTML}</span>` : ''}
+                <div style="color: rgba(255,255,255,0.8);">
+                    ${outletHTML ? `<span style="font-size: 12px;">via ${outletHTML}</span>` : ''}
                 </div>
-                <div>${tagsHTML}</div>
             `;
         }
         
@@ -1141,12 +1123,11 @@
             }
             
             element.innerHTML = sorted.map(([name, count], index) => {
-                const posClass = index === 0 ? 'gold' : index === 1 ? 'silver' : index === 2 ? 'bronze' : '';
                 const logo = type === 'team' ? teamLogos[name] : null;
                 
                 return `
                     <div class="ranking-item" onclick="searchTag('${name.replace(/'/g, "\\'")}')">
-                        <div class="ranking-position ${posClass}">${index + 1}</div>
+                        <div class="ranking-position">#${index + 1}</div>
                         ${logo ? `<img src="${logo}" class="ranking-logo" alt="${name}" onerror="this.style.display='none'">` : ''}
                         <div class="ranking-name">${name}</div>
                         <div class="ranking-count">${count.toLocaleString()}</div>
@@ -1919,14 +1900,12 @@
             header.innerHTML = `🏆 "${matchedTag}" Rankings ${isTeam ? '(Team)' : '(Player)'}`;
             
             grid.innerHTML = rankings.map(r => {
-                const rankClass = r.rank === 1 ? 'top1' : r.rank === 2 ? 'top2' : r.rank === 3 ? 'top3' : r.rank <= 10 ? 'top10' : '';
-                const suffix = r.rank === 1 ? 'st' : r.rank === 2 ? 'nd' : r.rank === 3 ? 'rd' : 'th';
                 const rankText = r.rank !== 'N/A' ? `#${r.rank}` : '—';
                 
                 return `
                     <div class="ranking-card">
                         <div class="ranking-period">${r.period}</div>
-                        <div class="ranking-position ${rankClass}">${rankText}</div>
+                        <div class="ranking-position">${rankText}</div>
                         <div class="ranking-mentions">${r.mentions.toLocaleString()} mentions</div>
                     </div>
                 `;
