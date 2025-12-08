@@ -238,6 +238,28 @@ def main():
         print(f"\n✅ Successfully appended {len(new_rumors)} new rumors to {last_part}!")
         print(f"📊 Rumors in {last_part}: {len(existing_rumors)}")
         
+        # Create latest.json with most recent 100 rumors for instant loading
+        try:
+            # Collect all rumors from all parts to find the newest 100
+            all_rumors_for_latest = []
+            for part_num in range(1, 8):
+                try:
+                    with open(f'hoopshype_rumors_part{part_num}.json', 'r', encoding='utf-8') as f:
+                        all_rumors_for_latest.extend(json.load(f))
+                except:
+                    pass
+            
+            # Sort by date descending and take newest 100
+            all_rumors_for_latest.sort(key=lambda x: x['archive_date'], reverse=True)
+            latest_100 = all_rumors_for_latest[:100]
+            
+            with open('hoopshype_rumors_latest.json', 'w', encoding='utf-8') as f:
+                json.dump(latest_100, f, ensure_ascii=False)
+            
+            print(f"⚡ Created hoopshype_rumors_latest.json with {len(latest_100)} rumors for instant load")
+        except Exception as e:
+            print(f"Note: Could not create latest.json: {e}")
+        
         # Update index file
         try:
             with open('rumors_index.json', 'r', encoding='utf-8') as f:
@@ -265,6 +287,27 @@ def main():
         
     else:
         print(f"\n✅ No new rumors found (all already in database)")
+    
+    # Always ensure latest.json exists with newest 100 rumors
+    try:
+        all_rumors_for_latest = []
+        for part_num in range(1, 8):
+            try:
+                with open(f'hoopshype_rumors_part{part_num}.json', 'r', encoding='utf-8') as f:
+                    all_rumors_for_latest.extend(json.load(f))
+            except:
+                pass
+        
+        if all_rumors_for_latest:
+            all_rumors_for_latest.sort(key=lambda x: x['archive_date'], reverse=True)
+            latest_100 = all_rumors_for_latest[:100]
+            
+            with open('hoopshype_rumors_latest.json', 'w', encoding='utf-8') as f:
+                json.dump(latest_100, f, ensure_ascii=False)
+            
+            print(f"⚡ Updated hoopshype_rumors_latest.json ({len(latest_100)} rumors)")
+    except Exception as e:
+        print(f"Note: Could not update latest.json: {e}")
 
 if __name__ == '__main__':
     main()
