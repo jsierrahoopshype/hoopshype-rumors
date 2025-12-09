@@ -878,8 +878,8 @@
         // HOOPSHYPE EMBED CONFIGURATION
         // ============================================
         const HOOPSHYPE_CONFIG = {
-            // Set to true when embedded on HoopsHype
-            embedMode: true,
+            // Set to true when embedded on HoopsHype (disabled for testing)
+            embedMode: false,
             // Base URL of the HoopsHype page where this is embedded
             baseUrl: 'https://www.hoopshype.com/story/sports/nba/rumors/2025/11/26/mike-conley-called-to-a-mandatory-timberwolves-team-dinner-amid-a-rough-stretch/87483296007/'
         };
@@ -1335,14 +1335,15 @@
             });
             
             // Only refresh if user hasn't searched
+            fullArchiveLoaded = true; // Set flag FIRST so rankings calculate correctly
+            
             if (document.getElementById('searchBox').value.trim() === '') {
                 filteredRumors = allRumors;
             } else {
                 // Re-run current search to update results with full archive
-                handleSearch();
+                handleSearch(false); // false = don't update URL
             }
             
-            fullArchiveLoaded = true;
             calculateTrending();
             calculateRankings();
             console.log(`✅ Full archive loaded: ${allRumors.length} rumors`);
@@ -1391,14 +1392,15 @@
                 });
                 
                 // Update filtered if not searching
+                fullArchiveLoaded = true; // Set flag FIRST so rankings calculate correctly
+                
                 if (document.getElementById('searchBox').value.trim() === '') {
                     filteredRumors = allRumors;
                 } else {
                     // Re-run current search to update results with full archive
-                    handleSearch();
+                    handleSearch(false); // false = don't update URL
                 }
                 
-                fullArchiveLoaded = true;
                 calculateTrending();
                 calculateRankings();
                 console.log(`✅ Full archive loaded: ${allRumors.length} rumors`);
