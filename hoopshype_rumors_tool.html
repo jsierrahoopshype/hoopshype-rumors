@@ -851,6 +851,7 @@
     
     <script>
         let allRumors = [];
+        let fullArchiveLoaded = false;
         let filteredRumors = [];
         let currentPage = 1;
         const rumorsPerPage = 25;
@@ -1242,6 +1243,7 @@
                     
                     console.log(`Loaded ${allRumors.length} total rumors`);
                     
+                    fullArchiveLoaded = true;
                     filteredRumors = allRumors;
                     displayPage(1);
                     calculateTrending();
@@ -1287,8 +1289,12 @@
             // Only refresh if user hasn't searched
             if (document.getElementById('searchBox').value.trim() === '') {
                 filteredRumors = allRumors;
+            } else {
+                // Re-run current search to update results with full archive
+                handleSearch();
             }
             
+            fullArchiveLoaded = true;
             calculateTrending();
             calculateRankings();
             console.log(`✅ Full archive loaded: ${allRumors.length} rumors`);
@@ -1339,8 +1345,12 @@
                 // Update filtered if not searching
                 if (document.getElementById('searchBox').value.trim() === '') {
                     filteredRumors = allRumors;
+                } else {
+                    // Re-run current search to update results with full archive
+                    handleSearch();
                 }
                 
+                fullArchiveLoaded = true;
                 calculateTrending();
                 calculateRankings();
                 console.log(`✅ Full archive loaded: ${allRumors.length} rumors`);
@@ -1913,6 +1923,18 @@
         
         // Search Rankings Functions
         function calculateSearchRankings(searchTerms) {
+            // If archive not fully loaded, show loading message
+            if (!fullArchiveLoaded) {
+                const section = document.getElementById('searchRankingsSection');
+                section.innerHTML = `
+                    <div class="search-rankings-header">🏆 Rankings</div>
+                    <div style="padding: 10px; color: #666; font-size: 12px;">
+                        <em>Loading full archive...</em>
+                    </div>
+                `;
+                section.style.display = 'block';
+                return;
+            }
             if (!searchTerms || searchTerms.length === 0 || filteredRumors.length < 5) {
                 hideSearchRankings();
                 return;
