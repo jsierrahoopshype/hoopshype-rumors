@@ -774,13 +774,37 @@
     <div class="container">
         <!-- Search Section -->
         <div class="search-section">
-            <input type="text" 
-                   class="search-box" 
-                   id="searchBox" 
-                   placeholder="Search rumors... (e.g., LeBron James trade, Lakers free agency, Giannis)"
-                   autocomplete="off">
+            <div style="display: flex; gap: 10px; max-width: 800px; margin: 0 auto;">
+                <input type="text" 
+                       class="search-box" 
+                       id="searchBox" 
+                       placeholder="Search rumors... (e.g., LeBron James trade, Lakers free agency)"
+                       autocomplete="off"
+                       style="flex: 1;">
+                <button onclick="handleSearch(true)" style="
+                    background: #e74c3c;
+                    color: white;
+                    border: none;
+                    padding: 12px 24px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    font-weight: bold;
+                    cursor: pointer;
+                    white-space: nowrap;
+                ">🔍 Search</button>
+                <button onclick="clearSearch()" style="
+                    background: #95a5a6;
+                    color: white;
+                    border: none;
+                    padding: 12px 16px;
+                    border-radius: 8px;
+                    font-size: 16px;
+                    cursor: pointer;
+                    white-space: nowrap;
+                ">✕ Clear</button>
+            </div>
             <div class="search-hint">
-                💡 Tip: Just type naturally - "LeBron James trade" or "Lakers, free agency" both work!
+                💡 Tip: Type and press Enter or click Search to find rumors
             </div>
         </div>
         
@@ -850,6 +874,30 @@
     </div>
     
     <script>
+        // ============================================
+        // HOOPSHYPE EMBED CONFIGURATION
+        // ============================================
+        const HOOPSHYPE_CONFIG = {
+            // Set to true when embedded on HoopsHype
+            embedMode: true,
+            // Base URL of the HoopsHype page where this is embedded
+            baseUrl: 'https://www.hoopshype.com/story/sports/nba/rumors/2025/11/26/mike-conley-called-to-a-mandatory-timberwolves-team-dinner-amid-a-rough-stretch/87483296007/'
+        };
+        
+        // Redirect to HoopsHype page with query parameter
+        function redirectToHoopsHype(query) {
+            if (HOOPSHYPE_CONFIG.embedMode && window.top !== window.self) {
+                // We're in an iframe - redirect the parent page
+                const url = query 
+                    ? `${HOOPSHYPE_CONFIG.baseUrl}?q=${encodeURIComponent(query)}`
+                    : HOOPSHYPE_CONFIG.baseUrl;
+                window.top.location.href = url;
+                return true; // Indicate redirect happened
+            }
+            return false; // No redirect
+        }
+        // ============================================
+        
         let allRumors = [];
         let fullArchiveLoaded = false;
         let filteredRumors = [];
@@ -1367,13 +1415,15 @@
             
             searchBox.addEventListener('input', (e) => {
                 clearTimeout(searchTimeout);
-                searchTimeout = setTimeout(handleSearch, 500);
+                // In embed mode: only do local search while typing (no redirect)
+                // Redirect happens on Enter key
+                searchTimeout = setTimeout(() => handleSearch(false), 500);
             });
             
             searchBox.addEventListener('keypress', (e) => {
                 if (e.key === 'Enter') {
                     clearTimeout(searchTimeout);
-                    handleSearch();
+                    handleSearch(true); // This will redirect in embed mode
                 }
             });
         }
@@ -1466,7 +1516,22 @@
         }
         
         function searchTag(tag) {
+            // If embedded on HoopsHype, redirect to new page
+            if (redirectToHoopsHype(tag)) {
+                return; // Stop here - page will reload
+            }
+            
             document.getElementById('searchBox').value = tag;
+            handleSearch();
+        }
+        
+        function clearSearch() {
+            // If embedded on HoopsHype, redirect to base page (no query)
+            if (redirectToHoopsHype(null)) {
+                return; // Stop here - page will reload
+            }
+            
+            document.getElementById('searchBox').value = '';
             handleSearch();
         }
         
@@ -1584,9 +1649,16 @@
         }
         
         function handleSearch(shouldUpdateUrl = true) {
-            const query = document.getElementById('searchBox').value.trim().toLowerCase();
+            const query = document.getElementById('searchBox').value.trim();
             
-            if (!query) {
+            // If embedded on HoopsHype and URL should update, redirect to new page
+            if (shouldUpdateUrl && redirectToHoopsHype(query || null)) {
+                return; // Stop here - page will reload
+            }
+            
+            const queryLower = query.toLowerCase();
+            
+            if (!queryLower) {
                 filteredRumors = allRumors;
                 currentSearchTerms = [];
                 document.getElementById('resultsHeader').textContent = 'All Rumors';
@@ -1597,7 +1669,7 @@
                 if (shouldUpdateUrl) updateUrl(null);
             } else {
                 // Split by commas or spaces
-                const searchTerms = query.split(/[,\s]+/).filter(t => t.length > 0);
+                const searchTerms = queryLower.split(/[,\s]+/).filter(t => t.length > 0);
                 currentSearchTerms = searchTerms;
                 
                 filteredRumors = allRumors.filter(rumor => {
