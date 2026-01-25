@@ -898,6 +898,22 @@
         }
         // ============================================
         
+        // PROTECTED API CONFIGURATION
+        const RUMORS_API_BASE = 'https://hoopshype-rumors-api.thejorgesierra.workers.dev';
+        
+        // Helper function to convert filename to API URL
+        function getApiUrl(filename) {
+            if (filename === 'hoopshype_rumors_latest.json') {
+                return `${RUMORS_API_BASE}/api/rumors/latest`;
+            } else if (filename === 'rumors_index.json') {
+                return `${RUMORS_API_BASE}/api/rumors/index`;
+            } else if (filename.match(/hoopshype_rumors_part(\d+)\.json/)) {
+                const partNum = filename.match(/hoopshype_rumors_part(\d+)\.json/)[1];
+                return `${RUMORS_API_BASE}/api/rumors/part/${partNum}`;
+            }
+            return filename; // fallback
+        }
+        
         let allRumors = [];
         let fullArchiveLoaded = false;
         let filteredRumors = [];
@@ -1203,7 +1219,7 @@
             try {
                 // STEP 1: Try loading tiny latest.json first (instant display)
                 try {
-                    const latestResponse = await fetch('hoopshype_rumors_latest.json');
+                    const latestResponse = await fetch(getApiUrl('hoopshype_rumors_latest.json'));
                     if (latestResponse.ok) {
                         allRumors = await latestResponse.json();
                         
@@ -1234,7 +1250,7 @@
                 // FALLBACK: Load from index
                 let indexResponse;
                 try {
-                    indexResponse = await fetch('rumors_index.json');
+                    indexResponse = await fetch(getApiUrl('rumors_index.json'));
                 } catch (e) {
                     console.log('No index file, trying single file...');
                 }
@@ -1248,7 +1264,7 @@
                     console.log(`⚡ Quick loading: ${lastFile}`);
                     
                     try {
-                        const firstResponse = await fetch(lastFile);
+                        const firstResponse = await fetch(getApiUrl(lastFile));
                         if (firstResponse.ok) {
                             allRumors = await firstResponse.json();
                             allRumors.forEach((r, i) => r._loadIndex = 10000000 + i);
@@ -1313,7 +1329,7 @@
             
             for (const file of files) {
                 try {
-                    const resp = await fetch(file);
+                    const resp = await fetch(getApiUrl(file));
                     if (resp.ok) {
                         const data = await resp.json();
                         // Add indices (lower than part7's indices since these are older)
@@ -1352,7 +1368,7 @@
         // Load full archive after instant display from latest.json
         async function loadFullArchive() {
             try {
-                const indexResponse = await fetch('rumors_index.json');
+                const indexResponse = await fetch(getApiUrl('rumors_index.json'));
                 if (!indexResponse.ok) return;
                 
                 const index = await indexResponse.json();
@@ -1366,7 +1382,7 @@
                 
                 for (const file of files) {
                     try {
-                        const resp = await fetch(file);
+                        const resp = await fetch(getApiUrl(file));
                         if (resp.ok) {
                             const data = await resp.json();
                             
