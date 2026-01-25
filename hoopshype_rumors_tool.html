@@ -2013,15 +2013,20 @@
         
         // Search Rankings Functions
         function calculateSearchRankings(searchTerms) {
+            const section = document.getElementById('searchRankingsSection');
+            const header = document.getElementById('searchRankingsHeader');
+            const grid = document.getElementById('searchRankingsGrid');
+            
+            // Safety check
+            if (!section || !header || !grid) {
+                console.log('Rankings elements not found, skipping');
+                return;
+            }
+            
             // If archive not fully loaded, show loading message
             if (!fullArchiveLoaded) {
-                const section = document.getElementById('searchRankingsSection');
-                section.innerHTML = `
-                    <div class="search-rankings-header">🏆 Rankings</div>
-                    <div style="padding: 10px; color: #666; font-size: 12px;">
-                        <em>Loading full archive...</em>
-                    </div>
-                `;
+                header.innerHTML = '🏆 Rankings';
+                grid.innerHTML = `<div style="padding: 10px; color: #666; font-size: 12px;"><em>Loading full archive...</em></div>`;
                 section.style.display = 'block';
                 return;
             }
@@ -2107,10 +2112,7 @@
                 };
             });
             
-            // Display rankings
-            const section = document.getElementById('searchRankingsSection');
-            const header = document.getElementById('searchRankingsHeader');
-            const grid = document.getElementById('searchRankingsGrid');
+            // Display rankings (elements already retrieved at top of function)
             
             header.innerHTML = `🏆 "${matchedTag}" Rankings ${isTeam ? '(Team)' : '(Player)'}`;
             
@@ -2130,7 +2132,8 @@
         }
         
         function hideSearchRankings() {
-            document.getElementById('searchRankingsSection').style.display = 'none';
+            const section = document.getElementById('searchRankingsSection');
+            if (section) section.style.display = 'none';
         }
         
         // Load on page load
