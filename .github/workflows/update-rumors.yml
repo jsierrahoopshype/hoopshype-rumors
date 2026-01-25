@@ -30,35 +30,34 @@ jobs:
         python -m pip install --upgrade pip
         pip install requests beautifulsoup4
     
+    - name: Download current data from R2
+      env:
+        AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+        AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+        R2_ENDPOINT: https://c115ab4a70911c885646b6ba49b1692e.r2.cloudflarestorage.com
+      run: |
+        # Download existing JSON files from R2 so scraper can update them
+        for file in hoopshype_rumors_latest.json hoopshype_rumors_part1.json hoopshype_rumors_part2.json hoopshype_rumors_part3.json hoopshype_rumors_part4.json hoopshype_rumors_part5.json hoopshype_rumors_part6.json hoopshype_rumors_part7.json rumors_index.json; do
+          aws s3 cp "s3://hoopshype-rumors/$file" "$file" \
+            --endpoint-url "$R2_ENDPOINT" || echo "⚠️ Could not download $file (may not exist yet)"
+        done
+    
     - name: Run scraper
+      id: scraper
       env:
         HOOPSHYPE_USERNAME: ${{ secrets.HOOPSHYPE_USERNAME }}
         HOOPSHYPE_PASSWORD: ${{ secrets.HOOPSHYPE_PASSWORD }}
       run: |
         python update_rumors.py
-    
-    - name: Check for changes
-      id: check_changes
-      run: |
-        if git diff --quiet; then
-          echo "changes=false" >> $GITHUB_OUTPUT
+        # Check if any JSON files were modified
+        if [ -f "hoopshype_rumors_latest.json" ]; then
+          echo "has_data=true" >> $GITHUB_OUTPUT
         else
-          echo "changes=true" >> $GITHUB_OUTPUT
+          echo "has_data=false" >> $GITHUB_OUTPUT
         fi
     
-    - name: Commit and push changes
-      if: steps.check_changes.outputs.changes == 'true'
-      run: |
-        git config --local user.email "github-actions[bot]@users.noreply.github.com"
-        git config --local user.name "github-actions[bot]"
-        git add hoopshype_rumors_part*.json rumors_index.json hoopshype_rumors_latest.json
-        git commit -m "Auto-update: Added new rumors from $(date +'%Y-%m-%d')"
-        git push
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-    
     - name: Upload to Cloudflare R2
-      if: steps.check_changes.outputs.changes == 'true'
+      if: steps.scraper.outputs.has_data == 'true'
       env:
         AWS_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
         AWS_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
@@ -75,9 +74,9 @@ jobs:
         done
     
     - name: Summary
-      if: steps.check_changes.outputs.changes == 'true'
-      run: echo "✅ Successfully updated rumors database and synced to R2!"
+      if: steps.scraper.outputs.has_data == 'true'
+      run: echo "✅ Successfully updated rumors database in R2!"
     
-    - name: No updates
-      if: steps.check_changes.outputs.changes == 'false'
-      run: echo "ℹ️ No new rumors found"
+    - name: No data
+      if: steps.scraper.outputs.has_data == 'false'
+      run: echo "⚠️ No data files generated"
