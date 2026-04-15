@@ -181,9 +181,13 @@ def call_claude(user_msg):
             "anthropic-version": "2023-06-01",
         }
     )
-    with urllib.request.urlopen(req, timeout=120) as r:
-        resp = json.loads(r.read().decode())
-        return resp["content"][0]["text"]
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            resp = json.loads(r.read().decode())
+            return resp["content"][0]["text"]
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        raise Exception(f"Anthropic API error {e.code}: {error_body}")
 
 
 def generate_roundup(rumors, hours, date_label):
