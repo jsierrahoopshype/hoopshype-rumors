@@ -166,7 +166,7 @@ def call_claude(user_msg):
         raise ValueError("ANTHROPIC_API_KEY environment variable not set.")
 
     payload = json.dumps({
-        "model": "claude-sonnet-4-20250514",
+        "model": "claude-sonnet-4-6",
         "max_tokens": 4000,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_msg}]
