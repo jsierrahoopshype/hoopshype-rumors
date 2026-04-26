@@ -116,10 +116,17 @@ def build_payload(rumors, max_items=60):
         text   = (r.get("text") or "")[:450]
         quote  = (r.get("quote") or "")
         url    = (r.get("source_url") or "")
+        tags   = r.get("tags") or r.get("players") or []
+        if isinstance(tags, list):
+            tags_str = ", ".join(tags)
+        else:
+            tags_str = str(tags)
 
         block = f"---\nDATE:{date} | SOURCE:{outlet}"
         if url:
             block += f" | URL:{url}"
+        if tags_str:
+            block += f" | TAGS:{tags_str}"
         block += f"\n{text}"
         if quote:
             block += f'\nQUOTE: "{quote}"'
@@ -185,18 +192,34 @@ STALENESS RULE — CRITICAL:
    EXCEPTION: Include the injury only if it is still relevant going forward
    (e.g. a player missed Game 3 and their status for Game 4 is still unknown).
 
+SOURCING RULES — CRITICAL. READ CAREFULLY:
+Each archive entry arrives in this format:
+  DATE:YYYY-MM-DD | SOURCE:Outlet Name | URL:https://...
+  TEXT: the rumor text
+  QUOTE: "verbatim quote if present"
+
+- Every factual claim you write MUST be hyperlinked to the URL from that entry.
+  In HTML: <a href="URL">linked text</a>
+  In Slack: just append the URL in parentheses after the claim — (URL)
+- The linked text should be the outlet name or a natural word in the sentence, never a raw URL.
+- If an entry has NO URL field, omit attribution entirely. Do not invent or guess a link.
+- NEVER invent, guess or complete a person's name. Each entry includes a TAGS field
+  listing the people mentioned in that rumor. Only use names that appear in TAGS,
+  TEXT or QUOTE — never infer or complete a partial name from context.
+  If a quote has no speaker identified in those fields, attribute it to the outlet only.
+
 STYLE RULES:
 - HoopsHype-sourced items are priority — flag them prominently.
 - Do NOT fabricate quotes, details, or links not present in the data.
 - Do NOT add section headers or subheadings beyond the headline.
 - Target 700-1000 words total.
-- Write like you're filing for deadline — crisp, authoritative, no fluff.
+- Write like you're filing for deadline. A tiny bit conversational is fine — think Frank Urbina.
+  Natural, human, direct. Not stiff wire-copy, not chatty.
 - NO em-dashes (— or --). Use commas, periods or "and" instead.
 - AVOID all common AI writing tells. Never use: "notably," "it's worth noting," "underscoring,"
   "highlighting," "showcasing," "delve," "crucial," "game-changing," "landscape," "nuanced,"
   "multifaceted," "pivotal," "realm," "robust," "seamless," "leverage" (as a verb), "utilize."
-- Do not start sentences with "That" as a dramatic pivot ("That news came as...").
-- Do not over-explain why something matters — let the facts speak.
+- Do not over-explain why something matters. Let the facts speak.
 - Do not editorialize. Report, don't comment.
 
 OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
