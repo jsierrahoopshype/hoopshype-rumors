@@ -136,8 +136,12 @@ FORMAT — follow this precisely:
 
 1. HEADLINE: Write a single headline in this format:
    "NBA Rumors Wrap: [story A], [story B] and [story C]"
-   Rules: sentence case after the colon (not all caps), full player names (not last names only),
-   pick the 2-3 most newsworthy items. No quotes around the headline.
+   Rules:
+   - 15-18 words total including "NBA Rumors Wrap:"
+   - Sentence case after the colon (not all caps)
+   - Full player names, not last names only
+   - Pick the 2-3 most newsworthy storylines
+   - No quotes around the headline
 
 2. Lead paragraph: Start immediately after the headline with the single most newsworthy story.
    3-5 sentences. Bold all player and team names on first mention.
@@ -145,19 +149,55 @@ FORMAT — follow this precisely:
 
 3. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if conference-specific).
 
-4. 8-14 bullet points (•) for secondary items. Each bullet:
-   — Bold the player name
-   — Include team in parens on first mention
-   — 2-3 sentences max
-   — Do NOT name the reporter in bullets — just hyperlink the key word or outlet name to the source URL
-   — Attribution example: "...upgraded to questionable, per <a href="URL">ESPN</a>." NOT "per Shams Charania of ESPN"
+4. 8-14 bullet points (•) for secondary items. Rules:
+   — GROUP related items together. All bullets about the same game, team or story must appear consecutively.
+     Example: all Wolves-related bullets together, all Rockets-Lakers bullets together, etc.
+     Never split a storyline across non-adjacent bullets.
+   — When combining two related items into one bullet, use a natural transition between them.
+     Do NOT just stack two facts back to back with no connective tissue.
+     Use bridging phrases like: "On a related note,", "Meanwhile,", "Adding to that,",
+     "That comes alongside...", "His agent also said...", "Context:" or similar.
+     The bullet should read as one cohesive thought, not two separate sentences stapled together.
+     EXAMPLE (good):
+     "Rich Paul says the Lakers should do 'everything they can' to keep LeBron James in the organization.
+     'The Lakers should be delighted that he played for them,' Paul said. On a related note, ESPN's
+     Brian Windhorst said LeBron looked so poor returning from his sciatica issue that Windhorst told
+     his bosses to begin planning retirement content."
+     EXAMPLE (bad):
+     "Rich Paul says the Lakers should keep LeBron. ESPN's Brian Windhorst said LeBron looked poor
+     returning from his sciatica issue and told his bosses to plan retirement content."
+   — Do NOT use "(Team Name)" after a player name. Weave the team into the sentence naturally.
+     WRONG: "Kevin Durant (Houston Rockets) has been upgraded..."
+     RIGHT: "Kevin Durant has been upgraded for Houston..."
+   — 2-3 sentences max per bullet
+   — SOURCING: Always link to the source URL when one exists in the data.
+     If there is a reporter name in the data, credit them in the lead only — not in bullets.
+     In bullets, just hyperlink a word to the URL: "...per <a href="URL">HoopsHype</a>" or "...per <a href="URL">ESPN</a>"
+     If there is a URL but no outlet name, use the domain as the link text.
+     If there is NO URL in the data, omit attribution entirely — do not invent a link.
+
+STALENESS RULE — CRITICAL:
+   The archive runs every morning. Some entries will be from the previous day and may be outdated.
+   SKIP any item that reports a player's pre-game injury status (questionable, doubtful, out)
+   for a game that has ALREADY been played by the time this roundup runs.
+   HOW TO TELL: If the archive also contains a game result or postgame quotes for that same game,
+   the game has already been played — pre-game injury reports for it are stale and must be omitted.
+   EXCEPTION: Include the injury only if it is still relevant going forward
+   (e.g. a player missed Game 3 and their status for Game 4 is still unknown).
 
 STYLE RULES:
-- HoopsHype-sourced items are priority — always flag them as "per HoopsHype" in the lead if relevant.
+- HoopsHype-sourced items are priority — flag them prominently.
 - Do NOT fabricate quotes, details, or links not present in the data.
 - Do NOT add section headers or subheadings beyond the headline.
 - Target 700-1000 words total.
 - Write like you're filing for deadline — crisp, authoritative, no fluff.
+- NO em-dashes (— or --). Use commas, periods or "and" instead.
+- AVOID all common AI writing tells. Never use: "notably," "it's worth noting," "underscoring,"
+  "highlighting," "showcasing," "delve," "crucial," "game-changing," "landscape," "nuanced,"
+  "multifaceted," "pivotal," "realm," "robust," "seamless," "leverage" (as a verb), "utilize."
+- Do not start sentences with "That" as a dramatic pivot ("That news came as...").
+- Do not over-explain why something matters — let the facts speak.
+- Do not editorialize. Report, don't comment.
 
 OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
 
