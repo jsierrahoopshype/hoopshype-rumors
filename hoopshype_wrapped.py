@@ -134,31 +134,41 @@ SYSTEM_PROMPT = """You are a senior NBA beat writer for HoopsHype writing the da
 
 FORMAT — follow this precisely:
 
-1. Lead paragraph (no headline): Start immediately with the single most newsworthy story. 3-5 sentences. Bold all player and team names on first mention.
+1. HEADLINE: Write a single headline in this format:
+   "NBA Rumors Wrap: [story A], [story B] and [story C]"
+   Rules: sentence case after the colon (not all caps), full player names (not last names only),
+   pick the 2-3 most newsworthy items. No quotes around the headline.
 
-2. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if all items are conference-specific).
+2. Lead paragraph: Start immediately after the headline with the single most newsworthy story.
+   3-5 sentences. Bold all player and team names on first mention.
+   Name the reporter/outlet who broke the story naturally in the text (e.g. "per Shams Charania", "per HoopsHype").
 
-3. 8-14 bullet points (•) for secondary items. Each bullet:
+3. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if conference-specific).
+
+4. 8-14 bullet points (•) for secondary items. Each bullet:
    — Bold the player name
    — Include team in parens on first mention
    — 2-3 sentences max
-   — Attribute naturally in the text ("per Woj", "writes Shams", "per HoopsHype's [reporter]")
-   — Include the source URL as a hyperlink on the reporter/outlet name
+   — Do NOT name the reporter in bullets — just hyperlink the key word or outlet name to the source URL
+   — Attribution example: "...upgraded to questionable, per <a href="URL">ESPN</a>." NOT "per Shams Charania of ESPN"
 
 STYLE RULES:
-- If HoopsHype is the source, always credit it as "per HoopsHype" — these are priority items.
+- HoopsHype-sourced items are priority — always flag them as "per HoopsHype" in the lead if relevant.
 - Do NOT fabricate quotes, details, or links not present in the data.
-- Do NOT add section headers or subheadings.
-- Target 600-900 words total.
+- Do NOT add section headers or subheadings beyond the headline.
+- Target 700-1000 words total.
 - Write like you're filing for deadline — crisp, authoritative, no fluff.
 
 OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
 
 Version 1 (HTML for Presto CMS):
-Use <p>, <strong>, <a href="...">, <ul>, <li> tags only. No CSS, no divs.
+- First line: the headline wrapped in <h2> tags
+- Then: <p>, <strong>, <a href="...">, <ul>, <li> tags only. No CSS, no divs.
 
 Version 2 (Plain text for Slack):
-Use *bold* for Slack markdown. Bullet points with •. No HTML tags."""
+- First line: *headline* in Slack bold
+- Then: plain text, *bold* for player/team names, bullet points with •, no HTML tags.
+- Write the FULL article — do not truncate or summarize. Every bullet point must appear."""
 
 
 def call_claude(user_msg):
@@ -167,7 +177,7 @@ def call_claude(user_msg):
 
     payload = json.dumps({
         "model": "claude-sonnet-4-6",
-        "max_tokens": 4000,
+        "max_tokens": 5000,
         "system": SYSTEM_PROMPT,
         "messages": [{"role": "user", "content": user_msg}]
     }).encode()
@@ -242,6 +252,20 @@ def save_html(html_body, filename, date_label):
     print(f"  ✓ HTML saved → {filename}")
 
 
+def send_slack_block(text):
+    """Send a single Slack message block (max 3000 chars)."""
+    payload = json.dumps({
+        "blocks": [{
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text}
+        }]
+    }).encode()
+    req = urllib.request.Request(SLACK, data=payload,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30):
+        pass
+
+
 def post_slack(slack_text, date_label, count, hours):
     if not SLACK:
         print("  ℹ  No SLACK_WEBHOOK_URL — skipping Slack post")
@@ -250,21 +274,27 @@ def post_slack(slack_text, date_label, count, hours):
     header = f"*🏀 HoopsHype Wrapped — {date_label}* (last {hours}h · {count} rumors)\n\n"
     full   = header + slack_text
 
-    # Slack text block limit is 3000 chars
-    body = full[:2950] + "…" if len(full) > 2950 else full
+    # Split into chunks of max 2950 chars, breaking on newlines where possible
+    CHUNK = 2950
+    chunks = []
+    remaining = full
+    while remaining:
+        if len(remaining) <= CHUNK:
+            chunks.append(remaining)
+            break
+        # Find last newline before the limit
+        split_at = remaining.rfind("\n", 0, CHUNK)
+        if split_at == -1:
+            split_at = CHUNK
+        chunks.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
 
-    payload = json.dumps({
-        "blocks": [{
-            "type": "section",
-            "text": {"type": "mrkdwn", "text": body}
-        }]
-    }).encode()
-
-    req = urllib.request.Request(SLACK, data=payload,
-                                 headers={"Content-Type": "application/json"})
     try:
-        with urllib.request.urlopen(req, timeout=30):
-            print("  ✓ Posted to Slack")
+        for i, chunk in enumerate(chunks, 1):
+            if len(chunks) > 1:
+                chunk = f"_({i}/{len(chunks)})_\n" + chunk
+            send_slack_block(chunk)
+        print(f"  ✓ Posted to Slack ({len(chunks)} message(s))")
     except Exception as e:
         print(f"  ⚠  Slack post failed: {e}", file=sys.stderr)
 
