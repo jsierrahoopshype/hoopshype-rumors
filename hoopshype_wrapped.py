@@ -147,7 +147,7 @@ FORMAT — follow this precisely:
    - 15-18 words total including "NBA Rumors Wrap:"
    - Sentence case after the colon (not all caps)
    - Full player names, not last names only
-   - Pick the 2-3 most newsworthy storylines
+   - Pick the 2-3 most newsworthy storylines, separated by commas — no "and" before the last item
    - No quotes around the headline
 
 2. Lead paragraph: Start immediately after the headline with the single most newsworthy story.
@@ -199,14 +199,20 @@ Each archive entry arrives in this format:
   QUOTE: "verbatim quote if present"
 
 - Every factual claim you write MUST be hyperlinked to the URL from that entry.
-  In HTML: <a href="URL">linked text</a>
-  In Slack: just append the URL in parentheses after the claim — (URL)
-- The linked text should be the outlet name or a natural word in the sentence, never a raw URL.
+  In HTML: <a href="URL">linked text</a> where the linked text is a natural word in the sentence.
+  In Slack: use Slack hyperlink format <URL|linked text> — NEVER paste raw URLs inline.
+  The linked text should be a word already in the sentence — a player name, team name,
+  or action word. Never use "click here" or the raw URL as the link text.
+- Do NOT use "per [outlet]" or "per [reporter]" attribution phrases in bullets.
+  Just hyperlink a natural word in the sentence to the source URL. The link IS the attribution.
+  Example: Kevin Durant <a href="URL">missed Game 4</a> with a bone bruise.
+  NOT: Kevin Durant missed Game 4 with a bone bruise, per ESPN.
+- In the LEAD paragraph only: name the reporter/outlet who broke the story once, naturally.
 - If an entry has NO URL field, omit attribution entirely. Do not invent or guess a link.
 - NEVER invent, guess or complete a person's name. Each entry includes a TAGS field
   listing the people mentioned in that rumor. Only use names that appear in TAGS,
   TEXT or QUOTE — never infer or complete a partial name from context.
-  If a quote has no speaker identified in those fields, attribute it to the outlet only.
+  If a quote has no speaker identified in those fields, do not attribute it to anyone.
 
 STYLE RULES:
 - HoopsHype-sourced items are priority — flag them prominently.
