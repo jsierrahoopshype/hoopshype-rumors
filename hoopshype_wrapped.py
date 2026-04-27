@@ -169,8 +169,10 @@ FORMAT — follow this precisely:
    - No quotes around the headline
 
 2. Lead paragraph: Start immediately after the headline with the single most newsworthy story.
-   3-5 sentences. Bold all player and team names on first mention.
-   Name the reporter/outlet who broke the story naturally in the text (e.g. "per Shams Charania", "per HoopsHype").
+   4-6 sentences. Give it room. Bold all player and team names on first mention.
+   Set context — why does this matter, what is the situation around it, what happens next.
+   Name the reporter/outlet who broke the story once, naturally (e.g. "per Shams Charania").
+   This is not a bullet. Write it like the opening of a real news story.
 
 3. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if conference-specific).
 
@@ -221,12 +223,20 @@ Each archive entry arrives in this format:
   In Slack: use Slack hyperlink format <URL|linked text> — NEVER paste raw URLs inline.
   The linked text should be a word already in the sentence — a player name, team name,
   or action word. Never use "click here" or the raw URL as the link text.
-- Do NOT use "per [outlet]" or "per [reporter]" attribution phrases in bullets.
-  Just hyperlink a natural word in the sentence to the source URL. The link IS the attribution.
-  Example: Kevin Durant <a href="URL">missed Game 4</a> with a bone bruise.
-  NOT: Kevin Durant missed Game 4 with a bone bruise, per ESPN.
-- In the LEAD paragraph only: name the reporter/outlet who broke the story once, naturally.
-- If an entry has NO URL field, omit attribution entirely. Do not invent or guess a link.
+- In bullets: NEVER use "per [outlet]" or "per [reporter]" phrases. No exceptions.
+  Just hyperlink a meaningful word or phrase in the sentence to the source URL.
+  The hyperlink IS the attribution. The reader can see where it goes.
+  RIGHT: Kevin Durant <a href="URL">missed Game 4</a> with a bone bruise in his ankle.
+  WRONG: Kevin Durant missed Game 4 with a bone bruise, per ESPN.
+  WRONG: per Shams Charania, Kevin Durant missed Game 4.
+- The hyperlinked word should be a fact, action or detail — never the reporter's name,
+  never the outlet name, never "here" or "this report."
+  RIGHT: ...the Rockets <a href="URL">avoided a sweep</a> Sunday night.
+  WRONG: ...the Rockets avoided a sweep Sunday night, per <a href="URL">ESPN</a>.
+- "Per [name]" is allowed ONLY in the lead paragraph, and ONLY for genuine newsbreakers:
+  Shams Charania, Adrian Wojnarowski, Marc Stein, Chris Haynes, HoopsHype exclusives.
+  Everyone else gets a hyperlinked fact, no name drop.
+- If an entry has NO URL field, write the fact with no link and no attribution phrase.
 - NEVER invent, guess or complete a person's name. Each entry includes a TAGS field
   listing the people mentioned in that rumor. Only use names that appear in TAGS,
   TEXT or QUOTE — never infer or complete a partial name from context.
@@ -241,6 +251,12 @@ BULLET STRUCTURE RULES:
 - Aim for somewhere between HoopsRumors tight and The Athletic notes column — factual and
   efficient, but with enough texture that each item feels like it was written by a person,
   not assembled from a database. A good quote earns its own sentence. Context earns one too.
+- When an anecdote has natural color — a funny exchange, an unexpected detail, a human moment —
+  write it like a story, not a transcript summary. Set the scene briefly, let the moment land.
+  Example: instead of "Sengun asked if he mispronounced any words and Thompson said he did once
+  but was still motivated," write it so the reader can picture the locker room.
+- Do not use full team names when a shorter version works. "Nuggets-Timberwolves scuffle"
+  not "Denver Nuggets-Minnesota Timberwolves scuffle." "the Rockets" not "the Houston Rockets."
 - Write as many bullets as the news warrants. Do not pad, do not cut good stories to hit a number.
 
 STYLE RULES:
@@ -250,12 +266,18 @@ STYLE RULES:
 - Target 700-1000 words total.
 - Natural, human, direct. Not stiff wire-copy, not chatty. Think a good NBA beat writer
   filing a notes column — Frank Urbina, not a press release.
-- NO em-dashes (— or --). Use commas, periods or "and" instead.
-- AVOID all common AI writing tells. Never use: "notably," "it's worth noting," "underscoring,"
-  "highlighting," "showcasing," "delve," "crucial," "game-changing," "landscape," "nuanced,"
-  "multifaceted," "pivotal," "realm," "robust," "seamless," "leverage" (as a verb), "utilize."
+- BANNED PUNCTUATION: No em-dashes (— or --) anywhere in the output. Use a comma or
+  a new sentence instead. This applies to ALL output including examples you generate mentally.
+- BANNED WORDS AND PHRASES — never use any of these:
+  "notably," "it's worth noting," "underscoring," "highlighting," "showcasing," "delve,"
+  "crucial," "game-changing," "landscape," "nuanced," "multifaceted," "pivotal," "realm,"
+  "robust," "seamless," "leverage" (as a verb), "utilize," "amidst," "furthermore,"
+  "nevertheless," "in the wake of," "moving forward," "going forward," "at the end of the day,"
+  "it remains to be seen," "only time will tell," "adding to the intrigue."
 - Do not over-explain why something matters. Let the facts speak.
 - Do not editorialize. Report, don't comment.
+- Read your output before finalizing. If any sentence sounds like it was written by a machine,
+  rewrite it.
 
 OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
 
@@ -387,6 +409,10 @@ def post_slack(slack_text, date_label, count, hours):
         chunks.append(remaining[:split_at].rstrip())
         remaining = remaining[split_at:].lstrip()
 
+    MAX_SLACK_MSGS = 6
+    if len(chunks) > MAX_SLACK_MSGS:
+        # Merge last chunks to stay within limit
+        chunks = chunks[:MAX_SLACK_MSGS-1] + ["\n".join(chunks[MAX_SLACK_MSGS-1:])]
     try:
         for i, chunk in enumerate(chunks, 1):
             if len(chunks) > 1:
