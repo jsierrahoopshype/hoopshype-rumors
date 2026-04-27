@@ -19,6 +19,24 @@ Environment variables (set locally or as GitHub Secrets):
 import argparse, json, os, sys, urllib.request
 from datetime import datetime, timedelta, timezone
 
+# ── URL cleaner ───────────────────────────────────────────────────────────────
+
+def clean_url(url):
+    """Strip UTM and other tracking parameters from URLs."""
+    if not url:
+        return url
+    try:
+        from urllib.parse import urlparse, urlencode, parse_qsl
+        parsed = urlparse(url)
+        STRIP = {"utm_source","utm_medium","utm_campaign","utm_term","utm_content",
+                 "utm_id","fbclid","gclid","mc_cid","mc_eid","r","ref","source",
+                 "_hsenc","_hsmi","hsCtaTracking"}
+        clean_qs = [(k,v) for k,v in parse_qsl(parsed.query) if k not in STRIP]
+        clean = parsed._replace(query=urlencode(clean_qs))
+        return clean.geturl()
+    except:
+        return url
+
 # ── Config ────────────────────────────────────────────────────────────────────
 WORKER  = "https://hoopshype-rumors-api.thejorgesierra.workers.dev"
 HH_KEY  = os.environ.get("HH_API_KEY", "")
@@ -115,7 +133,7 @@ def build_payload(rumors, max_items=60):
         outlet = r.get("outlet", "Unknown")
         text   = (r.get("text") or "")[:450]
         quote  = (r.get("quote") or "")
-        url    = (r.get("source_url") or "")
+        url    = clean_url(r.get("source_url") or "")
         tags   = r.get("tags") or r.get("players") or []
         if isinstance(tags, list):
             tags_str = ", ".join(tags)
@@ -214,13 +232,24 @@ Each archive entry arrives in this format:
   TEXT or QUOTE — never infer or complete a partial name from context.
   If a quote has no speaker identified in those fields, do not attribute it to anyone.
 
+BULLET STRUCTURE RULES:
+- Use judgment on length. If a game has one clean storyline, one tight bullet. If it has
+  two genuinely connected angles (e.g. an ejection that led to a fine), combine them with
+  a natural transition. If two players from the same game have unrelated stories, split them.
+- Each bullet should have one clear throughline. Do not pack in unrelated facts just because
+  they come from the same game. A bullet that wanders loses the reader.
+- Aim for somewhere between HoopsRumors tight and The Athletic notes column — factual and
+  efficient, but with enough texture that each item feels like it was written by a person,
+  not assembled from a database. A good quote earns its own sentence. Context earns one too.
+- Write as many bullets as the news warrants. Do not pad, do not cut good stories to hit a number.
+
 STYLE RULES:
 - HoopsHype-sourced items are priority — flag them prominently.
 - Do NOT fabricate quotes, details, or links not present in the data.
 - Do NOT add section headers or subheadings beyond the headline.
 - Target 700-1000 words total.
-- Write like you're filing for deadline. A tiny bit conversational is fine — think Frank Urbina.
-  Natural, human, direct. Not stiff wire-copy, not chatty.
+- Natural, human, direct. Not stiff wire-copy, not chatty. Think a good NBA beat writer
+  filing a notes column — Frank Urbina, not a press release.
 - NO em-dashes (— or --). Use commas, periods or "and" instead.
 - AVOID all common AI writing tells. Never use: "notably," "it's worth noting," "underscoring,"
   "highlighting," "showcasing," "delve," "crucial," "game-changing," "landscape," "nuanced,"
