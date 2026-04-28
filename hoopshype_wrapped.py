@@ -123,8 +123,15 @@ def score_rumor(r):
 
 
 def build_payload(rumors, max_items=60):
-    """Sort by score, take top N, format for Claude."""
-    scored = sorted(rumors, key=score_rumor, reverse=True)
+    """Sort by recency first, then score, take top N, format for Claude."""
+    # Primary sort: date descending (most recent first)
+    # Secondary sort: score descending (most newsworthy first within same date)
+    scored = sorted(rumors,
+                    key=lambda r: (
+                        r.get("archive_date", r.get("date", "")) or "",
+                        score_rumor(r)
+                    ),
+                    reverse=True)
     top    = scored[:max_items]
 
     lines = []
@@ -160,12 +167,13 @@ SYSTEM_PROMPT = """You are a senior NBA beat writer for HoopsHype writing the da
 FORMAT — follow this precisely:
 
 1. HEADLINE: Write a single headline in this format:
-   "NBA Rumors Wrap: [story A], [story B] and [story C]"
+   "NBA Rumors Wrap: [story A], [story B], [story C]"
    Rules:
    - 15-18 words total including "NBA Rumors Wrap:"
    - Sentence case after the colon (not all caps)
-   - Full player names, not last names only
-   - Pick the 2-3 most newsworthy storylines, separated by commas — no "and" before the last item
+   - Full player names are fine, but use short team names — "Thunder sweep Suns" not
+     "Oklahoma City Thunder sweep Phoenix Suns." No full franchise names in headlines.
+   - Pick the 2-3 most newsworthy storylines, separated by commas, no "and" before the last item
    - No quotes around the headline
 
 2. Lead paragraph: Start immediately after the headline with the single most newsworthy story.
@@ -203,8 +211,12 @@ FORMAT — follow this precisely:
      If there is a URL but no outlet name, use the domain as the link text.
      If there is NO URL in the data, omit attribution entirely — do not invent a link.
 
-STALENESS RULE — CRITICAL:
-   The archive runs every morning. Some entries will be from the previous day and may be outdated.
+STALENESS AND RECENCY RULES — CRITICAL:
+   The archive runs every morning. Entries are timestamped. More recent entries are more important.
+   PRIORITIZE items from later in the previous day over items from earlier in the day.
+   An injury update from 11pm matters more than the same story from 10am. Use the most
+   current version of a story — do not lead with outdated information when a newer entry exists.
+
    SKIP any item that reports a player's pre-game injury status (questionable, doubtful, out)
    for a game that has ALREADY been played by the time this roundup runs.
    HOW TO TELL: If the archive also contains a game result or postgame quotes for that same game,
@@ -236,6 +248,14 @@ Each archive entry arrives in this format:
 - "Per [name]" is allowed ONLY in the lead paragraph, and ONLY for genuine newsbreakers:
   Shams Charania, Adrian Wojnarowski, Marc Stein, Chris Haynes, HoopsHype exclusives.
   Everyone else gets a hyperlinked fact, no name drop.
+- WIDELY KNOWN FACTS need no attribution at all. If something is public knowledge
+  (a player missed a game, a team won, a score) do not credit a reporter for it.
+  Reserve attribution for actual reporting: contract details, injury timelines, trade talks,
+  behind-the-scenes information that someone had to dig for.
+  When in doubt, lean toward omitting the source credit entirely.
+- EVERY stat, fact or claim that came from a specific archive entry with a URL must be
+  hyperlinked, even if you do not name the reporter. The link is always there. The name is not.
+  If a stat appears in the text without a URL in the archive data, write it without a link.
 - If an entry has NO URL field, write the fact with no link and no attribution phrase.
 - NEVER invent, guess or complete a person's name. Each entry includes a TAGS field
   listing the people mentioned in that rumor. Only use names that appear in TAGS,
