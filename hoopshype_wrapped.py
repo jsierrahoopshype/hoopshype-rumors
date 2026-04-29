@@ -217,12 +217,14 @@ STALENESS AND RECENCY RULES — CRITICAL:
    An injury update from 11pm matters more than the same story from 10am. Use the most
    current version of a story — do not lead with outdated information when a newer entry exists.
 
-   SKIP any item that reports a player's pre-game injury status (questionable, doubtful, out)
-   for a game that has ALREADY been played by the time this roundup runs.
-   HOW TO TELL: If the archive also contains a game result or postgame quotes for that same game,
-   the game has already been played — pre-game injury reports for it are stale and must be omitted.
-   EXCEPTION: Include the injury only if it is still relevant going forward
-   (e.g. a player missed Game 3 and their status for Game 4 is still unknown).
+   SKIP any item that is no longer actionable or relevant:
+   - Pre-game injury reports (questionable, doubtful, out) for games already played
+   - Postgame stats or box score items from games played more than 24 hours ago
+   - Any "preview" or "what to watch for" content from a game that has already happened
+   HOW TO TELL if a game has been played: if the archive contains a result, postgame quotes,
+   or series standing update for that game, it has been played.
+   EXCEPTION: Include older items only if they are still relevant going forward
+   (e.g. a player's injury from Game 3 affects their Game 5 availability).
 
 SOURCING RULES — CRITICAL. READ CAREFULLY:
 Each archive entry arrives in this format:
@@ -296,6 +298,9 @@ STYLE RULES:
   "it remains to be seen," "only time will tell," "adding to the intrigue."
 - Do not over-explain why something matters. Let the facts speak.
 - Do not editorialize. Report, don't comment.
+- AVOID REPETITION: If a quote already contains a word or idea, do not restate it in the
+  surrounding sentence. Example: if Tatum says "he put a lot of pressure on us," do not
+  write "Tatum acknowledged the pressure" before the quote. Let the quote do the work.
 - Read your output before finalizing. If any sentence sounds like it was written by a machine,
   rewrite it.
 
@@ -303,11 +308,15 @@ OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
 
 Version 1 (HTML for Presto CMS):
 - First line: the headline wrapped in <h2> tags
-- Then: <p>, <strong>, <a href="...">, <ul>, <li> tags only. No CSS, no divs.
+- Then: <p>, <strong>, <a href="URL">linked text</a>, <ul>, <li> tags only. No CSS, no divs.
+- Every factual claim with a URL must be hyperlinked inline. NO raw URLs anywhere.
 
-Version 2 (Plain text for Slack):
+Version 2 (Slack):
 - First line: *headline* in Slack bold
-- Then: plain text, *bold* for player/team names, bullet points with •, no HTML tags.
+- Then: bullet points with •, *bold* for player/team names.
+- Every factual claim with a URL must use Slack hyperlink format: <URL|linked text>
+  where "linked text" is a word already in the sentence, not the URL itself.
+- NO raw URLs. NO URLs in parentheses. NEVER paste a URL as plain text.
 - Write the FULL article — do not truncate or summarize. Every bullet point must appear."""
 
 
@@ -359,6 +368,49 @@ def split_outputs(raw):
         html, slack = raw.split("===SLACK===", 1)
         return html.strip(), slack.strip()
     return raw.strip(), raw.strip()
+
+
+def fix_slack_urls(text):
+    """Post-process Slack text: convert all raw URLs to <URL|[source]> format."""
+    import re
+    # Pattern 1: single URL in parens
+    text = re.sub(r'\s*\(https?://[^\s\|\)]+\)',
+                  lambda m: ' <' + re.search(r'https?://[^\s\|\)]+', m.group()).group() + '|[source]>',
+                  text)
+    # Pattern 2: multiple URLs in parens separated by |
+    def replace_multi(m):
+        urls = re.findall(r'https?://[^\s\|\)]+', m.group())
+        return ' ' + ' '.join(f'<{u}|[source]>' for u in urls)
+    text = re.sub(r'\s*\(https?://[^\)]+\|[^\)]+\)', replace_multi, text)
+    # Pattern 3: any remaining bare URLs not already in Slack format
+    text = re.sub(r'(?<!<)(https?://[^\s<>]+)(?!\|)',
+                  lambda m: f'<{m.group(1)}|[source]>', text)
+    return text
+
+
+def fix_html_urls(text):
+    """
+    Post-process HTML to ensure raw URLs are converted to anchor tags.
+    Catches any URLs Claude output as plain text.
+    """
+    import re
+
+    # Replace (URL) patterns not already inside href=""
+    def replace_paren_url(m):
+        url = m.group(1).strip()
+        return f' <a href="{url}">[source]</a>'
+
+    text = re.sub(r'\s*\(https?://[^\s\)]+\)', replace_paren_url, text)
+
+    # Multiple URLs in parens separated by |
+    def replace_multi_url(m):
+        urls = re.findall(r'https?://[^\s\|\)]+', m.group(0))
+        links = " ".join(f'<a href="{u}">[source]</a>' for u in urls)
+        return f" {links}"
+
+    text = re.sub(r'\s*\(https?://[^\)]+\|[^\)]+\)', replace_multi_url, text)
+
+    return text
 
 
 # ── Output helpers ────────────────────────────────────────────────────────────
@@ -469,6 +521,8 @@ def main():
     print("\nGenerating roundup with Claude…")
     raw          = generate_roundup(rumors, args.hours, date_label)
     html_body, slack_text = split_outputs(raw)
+    html_body  = fix_html_urls(html_body)
+    slack_text = fix_slack_urls(slack_text)
 
     # 3. Save HTML (Presto-ready)
     save_html(html_body, filename, date_label)
