@@ -301,6 +301,16 @@ STYLE RULES:
 - AVOID REPETITION: If a quote already contains a word or idea, do not restate it in the
   surrounding sentence. Example: if Tatum says "he put a lot of pressure on us," do not
   write "Tatum acknowledged the pressure" before the quote. Let the quote do the work.
+- AVOID STATING THE OBVIOUS: Do not write conclusions that follow naturally from something
+  already stated. If you say a team forced a Game 6, do not then say the series is 3-2.
+  If you say a player is out for the series, do not add "his season is over." Trust the reader.
+- DO NOT LIFT JOKES OR CREATIVE FRAMINGS FROM SOURCES: If a reporter used a pop culture
+  reference, a pun, or a colorful analogy in their tweet or article, do not reproduce it.
+  Write your own straight description of what happened. The "Danny Glover" framing is an
+  example of something that belongs to the reporter, not this column.
+- HOOPSHYPE ATTRIBUTION: Mention "per HoopsHype" a maximum of ONE time per Wrap, for the
+  most exclusive or newsworthy HoopsHype item. All other HoopsHype items just get a hyperlink
+  with no text attribution.
 - Read your output before finalizing. If any sentence sounds like it was written by a machine,
   rewrite it.
 
