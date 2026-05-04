@@ -180,6 +180,9 @@ FORMAT — follow this precisely:
    4-6 sentences. Give it room. Bold all player and team names on first mention.
    Set context — why does this matter, what is the situation around it, what happens next.
    Name the reporter/outlet who broke the story once, naturally (e.g. "per Shams Charania").
+   The lead MUST contain at least one hyperlink to the source of the main story.
+   In HTML: <a href="URL">linked word or phrase</a> on the key fact.
+   In Slack: <URL|linked word or phrase> on the key fact.
    This is not a bullet. Write it like the opening of a real news story.
 
 3. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if conference-specific).
@@ -401,14 +404,28 @@ def fix_slack_urls(text):
 def fix_html_urls(text):
     """
     Post-process HTML to ensure raw URLs are converted to anchor tags.
-    Catches any URLs Claude output as plain text.
+    Also fixes malformed Slack-style links that leaked into HTML output.
     """
     import re
 
-    # Replace (URL) patterns not already inside href=""
-    def replace_paren_url(m):
+    # Fix malformed Slack-style links in HTML: <url|text> or <url|"text
+    # Claude sometimes mixes formats — catch and convert to proper anchors
+    def fix_slack_in_html(m):
         url = m.group(1).strip()
-        return f' <a href="{url}">[source]</a>'
+        link_text = m.group(2).strip().strip('"').strip()
+        if not link_text:
+            link_text = "[source]"
+        return f'<a href="{url}">{link_text}</a>'
+
+    text = re.sub(r'<(https?://[^|>]+)\|([^>]*)>', fix_slack_in_html, text)
+
+    # Replace raw (URL) patterns not already inside href=""
+    def replace_paren_url(m):
+        url = m.group(0)
+        url = re.search(r'https?://[^\s\)]+', url)
+        if url:
+            return f' <a href="{url.group()}">[source]</a>'
+        return ""
 
     text = re.sub(r'\s*\(https?://[^\s\)]+\)', replace_paren_url, text)
 
@@ -419,6 +436,13 @@ def fix_html_urls(text):
         return f" {links}"
 
     text = re.sub(r'\s*\(https?://[^\)]+\|[^\)]+\)', replace_multi_url, text)
+
+    # Catch any remaining bare URLs not already in an href
+    def replace_bare(m):
+        url = m.group(1)
+        return f'<a href="{url}">[source]</a>'
+
+    text = re.sub(r'(?<!href=")(?<!<)(https?://[^\s<>"]+)(?!")', replace_bare, text)
 
     return text
 
