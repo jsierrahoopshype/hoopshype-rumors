@@ -31,6 +31,8 @@ jobs:
   generate:
     runs-on: ubuntu-latest
     timeout-minutes: 10
+    permissions:
+      contents: write   # needed to commit HTML to repo
 
     steps:
       - name: Check monthly run limit
@@ -73,6 +75,8 @@ jobs:
       - name: Check out repo
         if: steps.limit_check.outputs.limit_reached == 'false'
         uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Set up Python
         if: steps.limit_check.outputs.limit_reached == 'false'
@@ -86,9 +90,14 @@ jobs:
         run: |
           HOURS="${{ github.event.inputs.hours || '24' }}"
           SKIP_SLACK="${{ github.event.inputs.skip_slack || 'false' }}"
+          DATE=$(date +%Y-%m-%d)
+          FILENAME="wrapped/${DATE}.html"
+          PAGES_URL="https://jsierrahoopshype.github.io/hoopshype-rumors/wrapped/${DATE}.html"
           echo "hours=$HOURS" >> $GITHUB_OUTPUT
           echo "skip_slack=$SKIP_SLACK" >> $GITHUB_OUTPUT
-          echo "filename=hoopshype_wrapped_$(date +%Y-%m-%d).html" >> $GITHUB_OUTPUT
+          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
+          echo "pages_url=$PAGES_URL" >> $GITHUB_OUTPUT
+          echo "date=$DATE" >> $GITHUB_OUTPUT
 
       - name: Generate roundup
         if: steps.limit_check.outputs.limit_reached == 'false'
@@ -96,7 +105,10 @@ jobs:
           HH_API_KEY:         ${{ secrets.HH_API_KEY }}
           ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
           SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
+          PAGES_URL:          ${{ steps.scope.outputs.pages_url }}
         run: |
+          mkdir -p wrapped
+
           SLACK_FLAG=""
           if [ "${{ steps.scope.outputs.skip_slack }}" = "true" ]; then
             SLACK_FLAG="--no-slack"
@@ -105,9 +117,19 @@ jobs:
           python hoopshype_wrapped.py \
             --hours ${{ steps.scope.outputs.hours }} \
             --output ${{ steps.scope.outputs.filename }} \
+            --pages-url "${{ steps.scope.outputs.pages_url }}" \
             $SLACK_FLAG
 
-      - name: Upload HTML as artifact
+      - name: Commit HTML to repo
+        if: steps.limit_check.outputs.limit_reached == 'false'
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add wrapped/
+          git commit -m "HoopsHype Wrapped — ${{ steps.scope.outputs.date }}" || echo "Nothing to commit"
+          git push
+
+      - name: Upload HTML as artifact (backup)
         if: steps.limit_check.outputs.limit_reached == 'false'
         uses: actions/upload-artifact@v4
         with:
@@ -121,5 +143,6 @@ jobs:
           echo "### 🏀 HoopsHype Wrapped" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "**Scope:** Last ${{ steps.scope.outputs.hours }} hours" >> $GITHUB_STEP_SUMMARY
-          echo "**File:** \`${{ steps.scope.outputs.filename }}\`" >> $GITHUB_STEP_SUMMARY
-          echo "Download the HTML from the Artifacts section above." >> $GITHUB_STEP_SUMMARY
+          echo "**URL:** ${{ steps.scope.outputs.pages_url }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "Live on GitHub Pages within ~60 seconds of this run completing." >> $GITHUB_STEP_SUMMARY
