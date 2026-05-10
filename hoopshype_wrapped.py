@@ -492,12 +492,13 @@ def send_slack_block(text):
         pass
 
 
-def post_slack(slack_text, date_label, count, hours):
+def post_slack(slack_text, date_label, count, hours, pages_url=""):
     if not SLACK:
         print("  ℹ  No SLACK_WEBHOOK_URL — skipping Slack post")
         return
 
-    header = f"*🏀 HoopsHype Wrapped — {date_label}* (last {hours}h · {count} rumors)\n\n"
+    link_line = f"<{pages_url}|📄 Read the full Wrapped>\n\n" if pages_url else ""
+    header = f"*🏀 HoopsHype Wrapped — {date_label}* (last {hours}h · {count} rumors)\n{link_line}"
     full   = header + slack_text
 
     # Split into chunks of max 2950 chars, breaking on newlines where possible
@@ -533,9 +534,10 @@ def post_slack(slack_text, date_label, count, hours):
 
 def main():
     parser = argparse.ArgumentParser(description="HoopsHype Wrapped — Daily Rumors Roundup")
-    parser.add_argument("--hours",    type=int,  default=24,  help="Hours to look back (default: 24)")
-    parser.add_argument("--output",   type=str,  default="",  help="HTML output filename (auto-named if empty)")
-    parser.add_argument("--no-slack", dest="no_slack", action="store_true", help="Skip Slack posting")
+    parser.add_argument("--hours",     type=int,  default=24,  help="Hours to look back (default: 24)")
+    parser.add_argument("--output",    type=str,  default="",  help="HTML output filename (auto-named if empty)")
+    parser.add_argument("--pages-url", type=str,  default="",  help="GitHub Pages URL to include in Slack message")
+    parser.add_argument("--no-slack",  dest="no_slack", action="store_true", help="Skip Slack posting")
     args = parser.parse_args()
 
     date_label = datetime.now().strftime("%B %d, %Y")
@@ -562,8 +564,9 @@ def main():
     save_html(html_body, filename, date_label)
 
     # 4. Slack
+    pages_url = args.pages_url or os.environ.get("PAGES_URL", "")
     if not args.no_slack:
-        post_slack(slack_text, date_label, len(rumors), args.hours)
+        post_slack(slack_text, date_label, len(rumors), args.hours, pages_url)
 
     # 5. Print plain text to console (useful in GitHub Actions logs)
     print(f"\n{'─'*60}")
