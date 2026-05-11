@@ -1,148 +1,591 @@
-name: HoopsHype Wrapped — Daily Roundup
+#!/usr/bin/env python3
+"""
+HoopsHype Wrapped — Daily NBA Rumors Roundup Generator
+Fetches last N hours from the HoopsHype Archive, writes a
+HoopsRumors-style notes post via Claude, outputs HTML + Slack.
 
-on:
-  # Runs at 7:00 UTC = 9:00 Madrid (summer/CEST) or 8:00 Madrid (winter/CET)
-  schedule:
-    - cron: '0 7 * * *'
+Usage:
+  python hoopshype_wrapped.py                  # last 24h
+  python hoopshype_wrapped.py --hours 12       # last 12h
+  python hoopshype_wrapped.py --hours 48       # last 48h
+  python hoopshype_wrapped.py --no-slack       # skip Slack
 
-  # Also triggerable manually from GitHub Actions UI
-  workflow_dispatch:
-    inputs:
-      hours:
-        description: 'Hours to look back'
-        required: false
-        default: '24'
-        type: choice
-        options:
-          - '12'
-          - '24'
-          - '48'
-          - '72'
-      skip_slack:
-        description: 'Skip Slack posting'
-        required: false
-        default: 'false'
-        type: boolean
+Environment variables (set locally or as GitHub Secrets):
+  HH_API_KEY          HoopsHype Rumors Worker API key
+  ANTHROPIC_API_KEY   Claude API key
+  SLACK_WEBHOOK_URL   Slack incoming webhook URL (optional)
+"""
 
-env:
-  MAX_MONTHLY_RUNS: 50
+import argparse, json, os, sys, urllib.request
+from datetime import datetime, timedelta, timezone
 
-jobs:
-  generate:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    permissions:
-      contents: write   # needed to commit HTML to repo
+# ── URL cleaner ───────────────────────────────────────────────────────────────
 
-    steps:
-      - name: Check monthly run limit
-        id: limit_check
-        run: |
-          MONTH_START=$(date -u +%Y-%m-01T00:00:00Z)
-          REPO="${{ github.repository }}"
-          TOKEN="${{ secrets.GITHUB_TOKEN }}"
+def clean_url(url):
+    """Strip UTM and other tracking parameters from URLs."""
+    if not url:
+        return url
+    try:
+        from urllib.parse import urlparse, urlencode, parse_qsl
+        parsed = urlparse(url)
+        STRIP = {"utm_source","utm_medium","utm_campaign","utm_term","utm_content",
+                 "utm_id","fbclid","gclid","mc_cid","mc_eid","r","ref","source",
+                 "_hsenc","_hsmi","hsCtaTracking"}
+        clean_qs = [(k,v) for k,v in parse_qsl(parsed.query) if k not in STRIP]
+        clean = parsed._replace(query=urlencode(clean_qs))
+        return clean.geturl()
+    except:
+        return url
 
-          RUN_COUNT=$(curl -s \
-            -H "Authorization: Bearer $TOKEN" \
-            -H "Accept: application/vnd.github+json" \
-            "https://api.github.com/repos/${REPO}/actions/workflows/daily-wrapped.yml/runs?created=>=${MONTH_START}&per_page=1" \
-            | python3 -c "
-          import sys, json
-          try:
-              data = json.load(sys.stdin)
-              print(data.get('total_count', 0))
-          except:
-              print(0)
-          ")
+# ── Config ────────────────────────────────────────────────────────────────────
+WORKER  = "https://hoopshype-rumors-api.thejorgesierra.workers.dev"
+HH_KEY  = os.environ.get("HH_API_KEY", "")
+AI_KEY  = os.environ.get("ANTHROPIC_API_KEY", "")
+SLACK   = os.environ.get("SLACK_WEBHOOK_URL", "")
 
-          echo "Runs this month so far: $RUN_COUNT / ${{ env.MAX_MONTHLY_RUNS }}"
+ARCHIVE_HEADERS = {
+    "Origin":  "https://jsierrahoopshype.github.io",
+    "Referer": "https://jsierrahoopshype.github.io/hoopshype-rumors/hoopshype_rumors_tool.html",
+    "User-Agent": "HoopsHype-Wrapped/1.0",
+    "X-API-Key": HH_KEY,
+}
 
-          if [ "$RUN_COUNT" -ge "${{ env.MAX_MONTHLY_RUNS }}" ]; then
-            echo "limit_reached=true" >> $GITHUB_OUTPUT
-            echo "::warning::Monthly run limit of ${{ env.MAX_MONTHLY_RUNS }} reached. Skipping."
-          else
-            echo "limit_reached=false" >> $GITHUB_OUTPUT
-          fi
+# Reporters and outlets that signal high-quality sourcing
+PREMIUM_SOURCES = [
+    "wojnarowski", "woj", "shams", "charania", "haynes", "stein",
+    "windhorst", "youngmisuk", "macmahon", "shelburne", "mannix",
+    "hoopshype", "the athletic", "espn", "bleacher report",
+]
 
-      - name: Stop if limit reached
-        if: steps.limit_check.outputs.limit_reached == 'true'
-        run: |
-          echo "### ⚠️ Monthly Run Limit Reached" >> $GITHUB_STEP_SUMMARY
-          echo "This workflow has hit its limit of **${{ env.MAX_MONTHLY_RUNS }} runs** this month." >> $GITHUB_STEP_SUMMARY
-          echo "It will resume automatically on the 1st of next month." >> $GITHUB_STEP_SUMMARY
-          exit 0
+# Keywords that signal a newsworthy rumor
+NEWSWORTHY_KW = [
+    "trade", "sign", "waive", "extend", "extension", "buyout", "release",
+    "fire", "fired", "hire", "hired", "interested", "pursuing", "targeting",
+    "contract", "deal", "offer", "free agent", "draft", "suspend",
+    "interview", "mutual interest", "exploring", "seeking",
+]
 
-      - name: Check out repo
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        uses: actions/checkout@v4
-        with:
-          token: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Set up Python
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+# ── Archive fetching ──────────────────────────────────────────────────────────
 
-      - name: Set scope variables
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        id: scope
-        run: |
-          HOURS="${{ github.event.inputs.hours || '24' }}"
-          SKIP_SLACK="${{ github.event.inputs.skip_slack || 'false' }}"
-          DATE=$(date +%Y-%m-%d)
-          FILENAME="wrapped/${DATE}.html"
-          PAGES_URL="https://jsierrahoopshype.github.io/hoopshype-rumors/wrapped/${DATE}.html"
-          echo "hours=$HOURS" >> $GITHUB_OUTPUT
-          echo "skip_slack=$SKIP_SLACK" >> $GITHUB_OUTPUT
-          echo "filename=$FILENAME" >> $GITHUB_OUTPUT
-          echo "pages_url=$PAGES_URL" >> $GITHUB_OUTPUT
-          echo "date=$DATE" >> $GITHUB_OUTPUT
+def fetch_endpoint(endpoint):
+    req = urllib.request.Request(f"{WORKER}{endpoint}", headers=ARCHIVE_HEADERS)
+    try:
+        with urllib.request.urlopen(req, timeout=60) as r:
+            data = json.loads(r.read().decode())
+            return data if isinstance(data, list) else data.get("rumors", [])
+    except Exception as e:
+        print(f"  ⚠  Fetch failed ({endpoint}): {e}", file=sys.stderr)
+        return []
 
-      - name: Generate roundup
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        env:
-          HH_API_KEY:         ${{ secrets.HH_API_KEY }}
-          ANTHROPIC_API_KEY:  ${{ secrets.ANTHROPIC_API_KEY }}
-          SLACK_WEBHOOK_URL:  ${{ secrets.SLACK_WEBHOOK_URL }}
-          PAGES_URL:          ${{ steps.scope.outputs.pages_url }}
-        run: |
-          mkdir -p wrapped
 
-          SLACK_FLAG=""
-          if [ "${{ steps.scope.outputs.skip_slack }}" = "true" ]; then
-            SLACK_FLAG="--no-slack"
-          fi
+def load_rumors(hours):
+    print(f"Fetching archive (last {hours}h)…")
 
-          python hoopshype_wrapped.py \
-            --hours ${{ steps.scope.outputs.hours }} \
-            --output ${{ steps.scope.outputs.filename }} \
-            --pages-url "${{ steps.scope.outputs.pages_url }}" \
-            $SLACK_FLAG
+    # Latest is always fetched; pull part 1 too if scope > 12h to ensure coverage
+    all_r = fetch_endpoint("/api/rumors/latest")
+    if hours > 12:
+        part1 = fetch_endpoint("/api/rumors/part/1")
+        seen = {r.get("source_url", "") for r in all_r}
+        all_r.extend(r for r in part1 if r.get("source_url", "") not in seen)
 
-      - name: Commit HTML to repo
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add wrapped/
-          git commit -m "HoopsHype Wrapped — ${{ steps.scope.outputs.date }}" || echo "Nothing to commit"
-          git push
+    print(f"  Loaded {len(all_r):,} raw entries")
 
-      - name: Upload HTML as artifact (backup)
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        uses: actions/upload-artifact@v4
-        with:
-          name: hoopshype-wrapped-${{ steps.scope.outputs.hours }}h-${{ github.run_id }}
-          path: ${{ steps.scope.outputs.filename }}
-          retention-days: 30
+    # Filter by date — archive_date is YYYY-MM-DD
+    cutoff_str = (datetime.now(timezone.utc) - timedelta(hours=hours)).strftime("%Y-%m-%d")
+    recent = [r for r in all_r if (r.get("archive_date") or r.get("date") or "") >= cutoff_str]
 
-      - name: Print summary
-        if: steps.limit_check.outputs.limit_reached == 'false'
-        run: |
-          echo "### 🏀 HoopsHype Wrapped" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Scope:** Last ${{ steps.scope.outputs.hours }} hours" >> $GITHUB_STEP_SUMMARY
-          echo "**URL:** ${{ steps.scope.outputs.pages_url }}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "Live on GitHub Pages within ~60 seconds of this run completing." >> $GITHUB_STEP_SUMMARY
+    print(f"  → {len(recent)} entries within last {hours}h")
+    return recent
+
+
+# ── Scoring & ranking ─────────────────────────────────────────────────────────
+
+def score_rumor(r):
+    text   = ((r.get("text") or "") + " " + (r.get("quote") or "")).lower()
+    outlet = (r.get("outlet") or "").lower()
+    s = 0
+    # Premium source bonus
+    if any(p in outlet or p in text for p in PREMIUM_SOURCES):
+        s += 10
+    # HoopsHype exclusive gets extra bump
+    if "hoopshype" in outlet.lower():
+        s += 5
+    # Direct quote = more substantive
+    if r.get("quote") and len(r.get("quote", "")) > 50:
+        s += 6
+    # Newsworthy keywords
+    s += sum(2 for kw in NEWSWORTHY_KW if kw in text)
+    # Longer text = more depth
+    if len(r.get("text", "")) > 300:
+        s += 3
+    return s
+
+
+def build_payload(rumors, max_items=60):
+    """Sort by recency first, then score, take top N, format for Claude."""
+    # Primary sort: date descending (most recent first)
+    # Secondary sort: score descending (most newsworthy first within same date)
+    scored = sorted(rumors,
+                    key=lambda r: (
+                        r.get("archive_date", r.get("date", "")) or "",
+                        score_rumor(r)
+                    ),
+                    reverse=True)
+    top    = scored[:max_items]
+
+    lines = []
+    for r in top:
+        date   = r.get("archive_date", "")
+        outlet = r.get("outlet", "Unknown")
+        text   = (r.get("text") or "")[:450]
+        quote  = (r.get("quote") or "")
+        url    = clean_url(r.get("source_url") or "")
+        tags   = r.get("tags") or r.get("players") or []
+        if isinstance(tags, list):
+            tags_str = ", ".join(tags)
+        else:
+            tags_str = str(tags)
+
+        block = f"---\nDATE:{date} | SOURCE:{outlet}"
+        if url:
+            block += f" | URL:{url}"
+        if tags_str:
+            block += f" | TAGS:{tags_str}"
+        block += f"\n{text}"
+        if quote:
+            block += f'\nQUOTE: "{quote}"'
+        lines.append(block)
+
+    return "\n\n".join(lines)
+
+
+# ── Claude call ───────────────────────────────────────────────────────────────
+
+SYSTEM_PROMPT = """You are a senior NBA beat writer for HoopsHype writing the daily rumors roundup.
+
+FORMAT — follow this precisely:
+
+1. HEADLINE: Write a single headline in this format:
+   "NBA Rumors Wrap: [story A], [story B], [story C]"
+   Rules:
+   - 15-18 words total including "NBA Rumors Wrap:"
+   - Sentence case after the colon (not all caps)
+   - Full player names are fine, but use short team names — "Thunder sweep Suns" not
+     "Oklahoma City Thunder sweep Phoenix Suns." No full franchise names in headlines.
+   - Pick the 2-3 most newsworthy storylines, separated by commas, no "and" before the last item
+   - No quotes around the headline
+
+2. Lead paragraph: Start immediately after the headline with the single most newsworthy story.
+   4-6 sentences. Give it room. Bold all player and team names on first mention.
+   Set context — why does this matter, what is the situation around it, what happens next.
+   Name the reporter/outlet who broke the story once, naturally (e.g. "per Shams Charania").
+   The lead MUST contain at least one hyperlink to the source of the main story.
+   In HTML: <a href="URL">linked word or phrase</a> on the key fact.
+   In Slack: <URL|linked word or phrase> on the key fact.
+   This is not a bullet. Write it like the opening of a real news story.
+
+3. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if conference-specific).
+
+4. 8-14 bullet points (•) for secondary items. Rules:
+   — GROUP related items together. All bullets about the same game, team or story must appear consecutively.
+     Example: all Wolves-related bullets together, all Rockets-Lakers bullets together, etc.
+     Never split a storyline across non-adjacent bullets.
+   — When combining two related items into one bullet, use a natural transition between them.
+     Do NOT just stack two facts back to back with no connective tissue.
+     Use bridging phrases like: "On a related note,", "Meanwhile,", "Adding to that,",
+     "That comes alongside...", "His agent also said...", "Context:" or similar.
+     The bullet should read as one cohesive thought, not two separate sentences stapled together.
+     EXAMPLE (good):
+     "Rich Paul says the Lakers should do 'everything they can' to keep LeBron James in the organization.
+     'The Lakers should be delighted that he played for them,' Paul said. On a related note, ESPN's
+     Brian Windhorst said LeBron looked so poor returning from his sciatica issue that Windhorst told
+     his bosses to begin planning retirement content."
+     EXAMPLE (bad):
+     "Rich Paul says the Lakers should keep LeBron. ESPN's Brian Windhorst said LeBron looked poor
+     returning from his sciatica issue and told his bosses to plan retirement content."
+   — Do NOT use "(Team Name)" after a player name. Weave the team into the sentence naturally.
+     WRONG: "Kevin Durant (Houston Rockets) has been upgraded..."
+     RIGHT: "Kevin Durant has been upgraded for Houston..."
+   — 2-3 sentences max per bullet
+   — SOURCING: Always link to the source URL when one exists in the data.
+     If there is a reporter name in the data, credit them in the lead only — not in bullets.
+     In bullets, just hyperlink a word to the URL: "...per <a href="URL">HoopsHype</a>" or "...per <a href="URL">ESPN</a>"
+     If there is a URL but no outlet name, use the domain as the link text.
+     If there is NO URL in the data, omit attribution entirely — do not invent a link.
+
+STALENESS AND RECENCY RULES — CRITICAL:
+   The archive runs every morning. Entries are timestamped. More recent entries are more important.
+   PRIORITIZE items from later in the previous day over items from earlier in the day.
+   An injury update from 11pm matters more than the same story from 10am. Use the most
+   current version of a story — do not lead with outdated information when a newer entry exists.
+
+   SKIP any item that is no longer actionable or relevant:
+   - Pre-game injury reports (questionable, doubtful, out) for games already played
+   - Postgame stats or box score items from games played more than 24 hours ago
+   - Any "preview" or "what to watch for" content from a game that has already happened
+   HOW TO TELL if a game has been played: if the archive contains a result, postgame quotes,
+   or series standing update for that game, it has been played.
+   EXCEPTION: Include older items only if they are still relevant going forward
+   (e.g. a player's injury from Game 3 affects their Game 5 availability).
+
+SOURCING RULES — CRITICAL. READ CAREFULLY:
+Each archive entry arrives in this format:
+  DATE:YYYY-MM-DD | SOURCE:Outlet Name | URL:https://...
+  TEXT: the rumor text
+  QUOTE: "verbatim quote if present"
+
+- Every factual claim you write MUST be hyperlinked to the URL from that entry.
+  In HTML: <a href="URL">linked text</a> where the linked text is a natural word in the sentence.
+  In Slack: use Slack hyperlink format <URL|linked text> — NEVER paste raw URLs inline.
+  The linked text should be a word already in the sentence — a player name, team name,
+  or action word. Never use "click here" or the raw URL as the link text.
+- In bullets: NEVER use "per [outlet]" or "per [reporter]" phrases. No exceptions.
+  Just hyperlink a meaningful word or phrase in the sentence to the source URL.
+  The hyperlink IS the attribution. The reader can see where it goes.
+  RIGHT: Kevin Durant <a href="URL">missed Game 4</a> with a bone bruise in his ankle.
+  WRONG: Kevin Durant missed Game 4 with a bone bruise, per ESPN.
+  WRONG: per Shams Charania, Kevin Durant missed Game 4.
+- The hyperlinked word should be a fact, action or detail — never the reporter's name,
+  never the outlet name, never "here" or "this report."
+  RIGHT: ...the Rockets <a href="URL">avoided a sweep</a> Sunday night.
+  WRONG: ...the Rockets avoided a sweep Sunday night, per <a href="URL">ESPN</a>.
+- "Per [name]" is allowed ONLY in the lead paragraph, and ONLY for genuine newsbreakers:
+  Shams Charania, Adrian Wojnarowski, Marc Stein, Chris Haynes, HoopsHype exclusives.
+  Everyone else gets a hyperlinked fact, no name drop.
+- WIDELY KNOWN FACTS need no attribution at all. If something is public knowledge
+  (a player missed a game, a team won, a score) do not credit a reporter for it.
+  Reserve attribution for actual reporting: contract details, injury timelines, trade talks,
+  behind-the-scenes information that someone had to dig for.
+  When in doubt, lean toward omitting the source credit entirely.
+- EVERY stat, fact or claim that came from a specific archive entry with a URL must be
+  hyperlinked, even if you do not name the reporter. The link is always there. The name is not.
+  If a stat appears in the text without a URL in the archive data, write it without a link.
+- If an entry has NO URL field, write the fact with no link and no attribution phrase.
+- NEVER invent, guess or complete a person's name. Each entry includes a TAGS field
+  listing the people mentioned in that rumor. Only use names that appear in TAGS,
+  TEXT or QUOTE — never infer or complete a partial name from context.
+  If a quote has no speaker identified in those fields, do not attribute it to anyone.
+
+BULLET STRUCTURE RULES:
+- Use judgment on length. If a game has one clean storyline, one tight bullet. If it has
+  two genuinely connected angles (e.g. an ejection that led to a fine), combine them with
+  a natural transition. If two players from the same game have unrelated stories, split them.
+- Each bullet should have one clear throughline. Do not pack in unrelated facts just because
+  they come from the same game. A bullet that wanders loses the reader.
+- Aim for somewhere between HoopsRumors tight and The Athletic notes column — factual and
+  efficient, but with enough texture that each item feels like it was written by a person,
+  not assembled from a database. A good quote earns its own sentence. Context earns one too.
+- When an anecdote has natural color — a funny exchange, an unexpected detail, a human moment —
+  write it like a story, not a transcript summary. Set the scene briefly, let the moment land.
+  Example: instead of "Sengun asked if he mispronounced any words and Thompson said he did once
+  but was still motivated," write it so the reader can picture the locker room.
+- Do not use full team names when a shorter version works. "Nuggets-Timberwolves scuffle"
+  not "Denver Nuggets-Minnesota Timberwolves scuffle." "the Rockets" not "the Houston Rockets."
+- Write as many bullets as the news warrants. Do not pad, do not cut good stories to hit a number.
+
+STYLE RULES:
+- HoopsHype-sourced items are priority — flag them prominently.
+- Do NOT fabricate quotes, details, or links not present in the data.
+- Do NOT add section headers or subheadings beyond the headline.
+- Target 900-1300 words total. Err on the longer side. More bullets, more depth per item.
+- Natural, human, direct. Think a good NBA beat writer filing a notes column — Frank Urbina,
+  not a press release.
+- BANNED PUNCTUATION: No em-dashes (— or --) anywhere in the output. Use a comma or
+  a new sentence instead. This applies to ALL output including examples you generate mentally.
+- BANNED WORDS AND PHRASES — never use any of these:
+  "notably," "it's worth noting," "underscoring," "highlighting," "showcasing," "delve,"
+  "crucial," "game-changing," "landscape," "nuanced," "multifaceted," "pivotal," "realm,"
+  "robust," "seamless," "leverage" (as a verb), "utilize," "amidst," "furthermore,"
+  "nevertheless," "in the wake of," "moving forward," "going forward," "at the end of the day,"
+  "it remains to be seen," "only time will tell," "adding to the intrigue."
+- Do not over-explain why something matters. Let the facts speak.
+- Do not editorialize. Report, don't comment.
+- AVOID REPETITION: If a quote already contains a word or idea, do not restate it in the
+  surrounding sentence. Example: if Tatum says "he put a lot of pressure on us," do not
+  write "Tatum acknowledged the pressure" before the quote. Let the quote do the work.
+- AVOID STATING THE OBVIOUS: Do not write conclusions that follow naturally from something
+  already stated. If you say a team forced a Game 6, do not then say the series is 3-2.
+  If you say a player is out for the series, do not add "his season is over." Trust the reader.
+- DO NOT LIFT JOKES OR CREATIVE FRAMINGS FROM SOURCES: If a reporter used a pop culture
+  reference, a pun, or a colorful analogy in their tweet or article, do not reproduce it.
+  Write your own straight description of what happened. The "Danny Glover" framing is an
+  example of something that belongs to the reporter, not this column.
+- HOOPSHYPE ATTRIBUTION: Mention "per HoopsHype" a maximum of ONE time per Wrap, for the
+  most exclusive or newsworthy HoopsHype item. All other HoopsHype items just get a hyperlink
+  with no text attribution.
+- Read your output before finalizing. If any sentence sounds like it was written by a machine,
+  rewrite it.
+- BANNED FRAMING PHRASES — never use these or anything like them:
+  "kept it personal", "kept it grounded", "kept it simple", "offered a more neutral take",
+  "reacted audibly", "came away with", "acknowledged that", "noting that", "pointing to",
+  "stopping short of", "making clear that", "signaling that", "in a moment that",
+  "underscored by", "punctuated by", "capped by", "with a clear target", "with characteristic".
+  These are AI tell phrases. Write the action, then the quote. No setup framing.
+  WRONG: "Edwards kept it personal. 'Today is Mother's Day,' he said."
+  RIGHT: "Edwards said he couldn't lose the game on Mother's Day. His mother died in 2015."
+
+OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
+
+Version 1 (HTML for Presto CMS):
+- First line: the headline wrapped in <h2> tags
+- Then: <p>, <strong>, <a href="URL">linked text</a>, <ul>, <li> tags only. No CSS, no divs.
+- Every factual claim with a URL must be hyperlinked inline. NO raw URLs anywhere.
+
+Version 2 (Slack):
+- First line: *headline* in Slack bold
+- Then: bullet points with •, *bold* for player/team names.
+- Every factual claim with a URL must use Slack hyperlink format: <URL|linked text>
+  where "linked text" is a word already in the sentence, not the URL itself.
+- NO raw URLs. NO URLs in parentheses. NEVER paste a URL as plain text.
+- Write the FULL article — do not truncate or summarize. Every bullet point must appear."""
+
+
+def call_claude(user_msg):
+    if not AI_KEY:
+        raise ValueError("ANTHROPIC_API_KEY environment variable not set.")
+
+    payload = json.dumps({
+        "model": "claude-sonnet-4-6",
+        "max_tokens": 5000,
+        "system": SYSTEM_PROMPT,
+        "messages": [{"role": "user", "content": user_msg}]
+    }).encode()
+
+    req = urllib.request.Request(
+        "https://api.anthropic.com/v1/messages",
+        data=payload,
+        headers={
+            "Content-Type":     "application/json",
+            "x-api-key":        AI_KEY,
+            "anthropic-version": "2023-06-01",
+        }
+    )
+    try:
+        with urllib.request.urlopen(req, timeout=120) as r:
+            resp = json.loads(r.read().decode())
+            return resp["content"][0]["text"]
+    except urllib.error.HTTPError as e:
+        error_body = e.read().decode()
+        raise Exception(f"Anthropic API error {e.code}: {error_body}")
+
+
+def generate_roundup(rumors, hours, date_label):
+    payload  = build_payload(rumors)
+    user_msg = (
+        f"DATE: {date_label}\n"
+        f"SCOPE: Last {hours} hours\n"
+        f"TOTAL ENTRIES: {len(rumors)}\n\n"
+        f"Write the HoopsHype Wrapped roundup from this archive data:\n\n"
+        f"{payload}"
+    )
+    print(f"  Sending {len(rumors)} entries to Claude…")
+    return call_claude(user_msg)
+
+
+def split_outputs(raw):
+    """Split Claude response into HTML and Slack versions."""
+    if "===SLACK===" in raw:
+        html, slack = raw.split("===SLACK===", 1)
+        return html.strip(), slack.strip()
+    return raw.strip(), raw.strip()
+
+
+def fix_slack_urls(text):
+    """Post-process Slack text: convert all raw URLs to <URL|[source]> format."""
+    import re
+    # Pattern 1: single URL in parens
+    text = re.sub(r'\s*\(https?://[^\s\|\)]+\)',
+                  lambda m: ' <' + re.search(r'https?://[^\s\|\)]+', m.group()).group() + '|[source]>',
+                  text)
+    # Pattern 2: multiple URLs in parens separated by |
+    def replace_multi(m):
+        urls = re.findall(r'https?://[^\s\|\)]+', m.group())
+        return ' ' + ' '.join(f'<{u}|[source]>' for u in urls)
+    text = re.sub(r'\s*\(https?://[^\)]+\|[^\)]+\)', replace_multi, text)
+    # Pattern 3: any remaining bare URLs not already in Slack format
+    text = re.sub(r'(?<!<)(https?://[^\s<>]+)(?!\|)',
+                  lambda m: f'<{m.group(1)}|[source]>', text)
+    return text
+
+
+def fix_html_urls(text):
+    """
+    Post-process HTML to ensure raw URLs are converted to anchor tags.
+    Also fixes malformed Slack-style links that leaked into HTML output.
+    """
+    import re
+
+    # Fix malformed Slack-style links in HTML: <url|text> or <url|"text
+    # Claude sometimes mixes formats — catch and convert to proper anchors
+    def fix_slack_in_html(m):
+        url = m.group(1).strip()
+        link_text = m.group(2).strip().strip('"').strip()
+        if not link_text:
+            link_text = "[source]"
+        return f'<a href="{url}">{link_text}</a>'
+
+    text = re.sub(r'<(https?://[^|>]+)\|([^>]*)>', fix_slack_in_html, text)
+
+    # Replace raw (URL) patterns not already inside href=""
+    def replace_paren_url(m):
+        url = m.group(0)
+        url = re.search(r'https?://[^\s\)]+', url)
+        if url:
+            return f' <a href="{url.group()}">[source]</a>'
+        return ""
+
+    text = re.sub(r'\s*\(https?://[^\s\)]+\)', replace_paren_url, text)
+
+    # Multiple URLs in parens separated by |
+    def replace_multi_url(m):
+        urls = re.findall(r'https?://[^\s\|\)]+', m.group(0))
+        links = " ".join(f'<a href="{u}">[source]</a>' for u in urls)
+        return f" {links}"
+
+    text = re.sub(r'\s*\(https?://[^\)]+\|[^\)]+\)', replace_multi_url, text)
+
+    # Catch any remaining bare URLs not already in an href
+    def replace_bare(m):
+        url = m.group(1)
+        return f'<a href="{url}">[source]</a>'
+
+    text = re.sub(r'(?<!href=")(?<!<)(https?://[^\s<>"]+)(?!")', replace_bare, text)
+
+    return text
+
+
+# ── Output helpers ────────────────────────────────────────────────────────────
+
+HTML_TEMPLATE = """<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>HoopsHype Wrapped — {date}</title>
+<style>
+  body {{ font-family: Georgia, serif; max-width: 780px; margin: 40px auto;
+          padding: 0 24px; line-height: 1.75; color: #111; }}
+  a    {{ color: #c8102e; }}
+  ul   {{ margin: .5rem 0 1rem; }}
+  li   {{ margin-bottom: .6rem; }}
+  .meta {{ font-size: 11px; color: #888; text-transform: uppercase;
+           letter-spacing: .08em; margin-bottom: 1.5rem; }}
+</style>
+</head>
+<body>
+<p class="meta">HoopsHype Wrapped &middot; {date}</p>
+{body}
+</body>
+</html>"""
+
+
+def save_html(html_body, filename, date_label):
+    full = HTML_TEMPLATE.format(date=date_label, body=html_body)
+    with open(filename, "w", encoding="utf-8") as f:
+        f.write(full)
+    print(f"  ✓ HTML saved → {filename}")
+
+
+def send_slack_block(text):
+    """Send a single Slack message block (max 3000 chars)."""
+    payload = json.dumps({
+        "blocks": [{
+            "type": "section",
+            "text": {"type": "mrkdwn", "text": text}
+        }]
+    }).encode()
+    req = urllib.request.Request(SLACK, data=payload,
+                                 headers={"Content-Type": "application/json"})
+    with urllib.request.urlopen(req, timeout=30):
+        pass
+
+
+def post_slack(slack_text, date_label, count, hours, pages_url=""):
+    if not SLACK:
+        print("  ℹ  No SLACK_WEBHOOK_URL — skipping Slack post")
+        return
+
+    link_line = f"<{pages_url}|📄 Read the full Wrapped>\n\n" if pages_url else ""
+    header = f"*🏀 HoopsHype Wrapped — {date_label}* (last {hours}h · {count} rumors)\n{link_line}"
+    full   = header + slack_text
+
+    # Split into chunks of max 2950 chars, breaking on newlines where possible
+    CHUNK = 2950
+    chunks = []
+    remaining = full
+    while remaining:
+        if len(remaining) <= CHUNK:
+            chunks.append(remaining)
+            break
+        # Find last newline before the limit
+        split_at = remaining.rfind("\n", 0, CHUNK)
+        if split_at == -1:
+            split_at = CHUNK
+        chunks.append(remaining[:split_at].rstrip())
+        remaining = remaining[split_at:].lstrip()
+
+    MAX_SLACK_MSGS = 6
+    if len(chunks) > MAX_SLACK_MSGS:
+        # Merge last chunks to stay within limit
+        chunks = chunks[:MAX_SLACK_MSGS-1] + ["\n".join(chunks[MAX_SLACK_MSGS-1:])]
+    try:
+        for i, chunk in enumerate(chunks, 1):
+            if len(chunks) > 1:
+                chunk = f"_({i}/{len(chunks)})_\n" + chunk
+            send_slack_block(chunk)
+        print(f"  ✓ Posted to Slack ({len(chunks)} message(s))")
+    except Exception as e:
+        print(f"  ⚠  Slack post failed: {e}", file=sys.stderr)
+
+
+# ── Main ──────────────────────────────────────────────────────────────────────
+
+def main():
+    parser = argparse.ArgumentParser(description="HoopsHype Wrapped — Daily Rumors Roundup")
+    parser.add_argument("--hours",     type=int,  default=24,  help="Hours to look back (default: 24)")
+    parser.add_argument("--output",    type=str,  default="",  help="HTML output filename (auto-named if empty)")
+    parser.add_argument("--pages-url", type=str,  default="",  help="GitHub Pages URL to include in Slack message")
+    parser.add_argument("--no-slack",  dest="no_slack", action="store_true", help="Skip Slack posting")
+    args = parser.parse_args()
+
+    date_label = datetime.now().strftime("%B %d, %Y")
+    filename   = args.output or f"hoopshype_wrapped_{datetime.now().strftime('%Y-%m-%d')}.html"
+
+    print(f"\n{'='*60}")
+    print(f"HoopsHype Wrapped — {date_label} (last {args.hours}h)")
+    print(f"{'='*60}\n")
+
+    # 1. Load
+    rumors = load_rumors(args.hours)
+    if not rumors:
+        print("❌  No rumors found for this time period.")
+        sys.exit(1)
+
+    # 2. Generate
+    print("\nGenerating roundup with Claude…")
+    raw          = generate_roundup(rumors, args.hours, date_label)
+    html_body, slack_text = split_outputs(raw)
+    html_body  = fix_html_urls(html_body)
+    slack_text = fix_slack_urls(slack_text)
+
+    # 3. Save HTML (Presto-ready)
+    save_html(html_body, filename, date_label)
+
+    # 4. Slack
+    pages_url = args.pages_url or os.environ.get("PAGES_URL", "")
+    if not args.no_slack:
+        post_slack(slack_text, date_label, len(rumors), args.hours, pages_url)
+
+    # 5. Print plain text to console (useful in GitHub Actions logs)
+    print(f"\n{'─'*60}")
+    print("PLAIN TEXT PREVIEW:")
+    print("─"*60)
+    print(slack_text[:1500])
+    if len(slack_text) > 1500:
+        print(f"… [{len(slack_text)-1500} more chars]")
+
+    print(f"\n✅  Done. HTML saved: {filename}")
+
+
+if __name__ == "__main__":
+    main()
