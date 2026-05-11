@@ -185,7 +185,14 @@ FORMAT — follow this precisely:
    In Slack: <URL|linked word or phrase> on the key fact.
    This is not a bullet. Write it like the opening of a real news story.
 
-3. Transition line: "Here are more notes from around the league:" (adjust to "the East" or "the West" if conference-specific).
+3. Transition line: "Here are more notes from around the league:" (adjust to "the East"
+   or "the West" if conference-specific).
+   PLACEMENT RULE: If the second bullet is still about the same topic as the lead story,
+   write that second paragraph BEFORE the transition line, not after it. The transition
+   line appears only when you are genuinely moving on to unrelated topics.
+   Example: if the lead is about Giannis trade talks and the next item is also about
+   Giannis trade talks, write it as a second paragraph, then put the transition line,
+   then move to unrelated bullets.
 
 4. 8-14 bullet points (•) for secondary items. Rules:
    — GROUP related items together. All bullets about the same game, team or story must appear consecutively.
@@ -288,9 +295,11 @@ STYLE RULES:
 - HoopsHype-sourced items are priority — flag them prominently.
 - Do NOT fabricate quotes, details, or links not present in the data.
 - Do NOT add section headers or subheadings beyond the headline.
-- Target 700-1000 words total.
-- Natural, human, direct. Not stiff wire-copy, not chatty. Think a good NBA beat writer
-  filing a notes column — Frank Urbina, not a press release.
+- Target 900-1300 words total. Get there by writing MORE bullets, not by making the
+  lead or individual bullets longer. The lead stays 4-6 sentences. Bullets stay 2-3 sentences.
+  Add depth by covering more stories, not by expanding each story.
+- Natural, human, direct. Think a good NBA beat writer filing a notes column — Frank Urbina,
+  not a press release.
 - BANNED PUNCTUATION: No em-dashes (— or --) anywhere in the output. Use a comma or
   a new sentence instead. This applies to ALL output including examples you generate mentally.
 - BANNED WORDS AND PHRASES — never use any of these:
@@ -316,6 +325,14 @@ STYLE RULES:
   with no text attribution.
 - Read your output before finalizing. If any sentence sounds like it was written by a machine,
   rewrite it.
+- BANNED FRAMING PHRASES — never use these or anything like them:
+  "kept it personal", "kept it grounded", "kept it simple", "offered a more neutral take",
+  "reacted audibly", "came away with", "acknowledged that", "noting that", "pointing to",
+  "stopping short of", "making clear that", "signaling that", "in a moment that",
+  "underscored by", "punctuated by", "capped by", "with a clear target", "with characteristic".
+  These are AI tell phrases. Write the action, then the quote. No setup framing.
+  WRONG: "Edwards kept it personal. 'Today is Mother's Day,' he said."
+  RIGHT: "Edwards said he couldn't lose the game on Mother's Day. His mother died in 2015."
 
 OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
 
@@ -323,6 +340,8 @@ Version 1 (HTML for Presto CMS):
 - First line: the headline wrapped in <h2> tags
 - Then: <p>, <strong>, <a href="URL">linked text</a>, <ul>, <li> tags only. No CSS, no divs.
 - Every factual claim with a URL must be hyperlinked inline. NO raw URLs anywhere.
+- LAST LINE: End with this paragraph exactly:
+  <p>For constantly updated NBA rumors, head to <a href="https://www.hoopshype.com/rumors/">HoopsHype's main Rumors page</a>.</p>
 
 Version 2 (Slack):
 - First line: *headline* in Slack bold
@@ -330,7 +349,8 @@ Version 2 (Slack):
 - Every factual claim with a URL must use Slack hyperlink format: <URL|linked text>
   where "linked text" is a word already in the sentence, not the URL itself.
 - NO raw URLs. NO URLs in parentheses. NEVER paste a URL as plain text.
-- Write the FULL article — do not truncate or summarize. Every bullet point must appear."""
+- Write the FULL article — do not truncate or summarize. Every bullet point must appear.
+- LAST LINE: For constantly updated NBA rumors, head to <https://www.hoopshype.com/rumors/|HoopsHype's main Rumors page>."""
 
 
 def call_claude(user_msg):
