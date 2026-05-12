@@ -184,6 +184,11 @@ FORMAT — follow this precisely:
    In HTML: <a href="URL">linked word or phrase</a> on the key fact.
    In Slack: <URL|linked word or phrase> on the key fact.
    This is not a bullet. Write it like the opening of a real news story.
+   ONE TOPIC ONLY: The lead covers exactly one story. Do not pivot to a second unrelated
+   story in the same lead block, even if both stories involve the same team or city.
+   LeBron's free agency and Giannis trade talks are two separate stories — pick one for
+   the lead, put the other in a bullet. The connection "timing matters for the Lakers"
+   is not enough to merge two distinct storylines into one lead.
 
 3. Transition line: "Here are more notes from around the league:" (adjust to "the East"
    or "the West" if conference-specific).
@@ -295,9 +300,10 @@ STYLE RULES:
 - HoopsHype-sourced items are priority — flag them prominently.
 - Do NOT fabricate quotes, details, or links not present in the data.
 - Do NOT add section headers or subheadings beyond the headline.
-- Target 900-1300 words total. Get there by writing MORE bullets, not by making the
-  lead or individual bullets longer. The lead stays 4-6 sentences. Bullets stay 2-3 sentences.
-  Add depth by covering more stories, not by expanding each story.
+- Target 900-1300 words total. Get there by writing MORE bullets — aim for 12-16 bullets
+  minimum when the news supports it. The lead stays 4-6 sentences. Bullets stay 2-3 sentences.
+  Add depth by covering more stories, not by expanding each story. If the archive has 100
+  entries, there are almost always 12-16 distinct stories worth mentioning. Find them.
 - Natural, human, direct. Think a good NBA beat writer filing a notes column — Frank Urbina,
   not a press release.
 - BANNED PUNCTUATION: No em-dashes (— or --) anywhere in the output. Use a comma or
@@ -329,10 +335,15 @@ STYLE RULES:
   "kept it personal", "kept it grounded", "kept it simple", "offered a more neutral take",
   "reacted audibly", "came away with", "acknowledged that", "noting that", "pointing to",
   "stopping short of", "making clear that", "signaling that", "in a moment that",
-  "underscored by", "punctuated by", "capped by", "with a clear target", "with characteristic".
+  "underscored by", "punctuated by", "capped by", "with a clear target", "with characteristic",
+  "framed it bluntly", "framed the situation", "had a generous word for", "had kind words for",
+  "had a valedictory feel", "had a surreal quality", "had a poignant moment",
+  "was blunt about", "was candid about", "was measured in his response".
   These are AI tell phrases. Write the action, then the quote. No setup framing.
-  WRONG: "Edwards kept it personal. 'Today is Mother's Day,' he said."
-  RIGHT: "Edwards said he couldn't lose the game on Mother's Day. His mother died in 2015."
+  WRONG: "Shams framed the Bucks' situation bluntly."
+  RIGHT: Just write what Shams said.
+  WRONG: "SGA had a generous word for LeBron."
+  RIGHT: "Shai Gilgeous-Alexander said LeBron's play at 41 is 'hard to put into words.'"
 
 OUTPUT TWO VERSIONS separated by exactly this line: ===SLACK===
 
