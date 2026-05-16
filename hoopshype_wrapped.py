@@ -269,6 +269,10 @@ Each archive entry arrives in this format:
   (a player missed a game, a team won, a score) do not credit a reporter for it.
   Reserve attribution for actual reporting: contract details, injury timelines, trade talks,
   behind-the-scenes information that someone had to dig for.
+  EXCEPTION: Specific statistical research or historical comparisons (e.g. "second-most blocks
+  in playoff history since 1974", "largest margin of victory in franchise history") can and
+  should credit the reporter or outlet who surfaced them. A stat that required digging earns
+  a name. Use judgment — not every stat needs it, but detailed historical research does.
   When in doubt, lean toward omitting the source credit entirely.
 - EVERY stat, fact or claim that came from a specific archive entry with a URL must be
   hyperlinked, even if you do not name the reporter. The link is always there. The name is not.
@@ -278,6 +282,10 @@ Each archive entry arrives in this format:
   listing the people mentioned in that rumor. Only use names that appear in TAGS,
   TEXT or QUOTE — never infer or complete a partial name from context.
   If a quote has no speaker identified in those fields, do not attribute it to anyone.
+- ATTRIBUTION ACCURACY: Never attribute a quote or report to a person unless their name
+  appears in that specific entry's TEXT, QUOTE or TAGS. If two reporters are mentioned
+  in a bullet and only one said a specific thing, do not assign the quote to the other.
+  If you are uncertain who said something, attribute to the outlet only, or omit attribution.
 
 BULLET STRUCTURE RULES:
 - Use judgment on length. If a game has one clean storyline, one tight bullet. If it has
@@ -299,6 +307,10 @@ BULLET STRUCTURE RULES:
 STYLE RULES:
 - HoopsHype-sourced items are priority — flag them prominently.
 - Do NOT fabricate quotes, details, or links not present in the data.
+- NEVER add context, backstory, or explanatory clauses that are not explicitly in the archive
+  entry. If the archive says Haliburton mentioned Zubac, do not add "The Pacers landed Zubac
+  via the draft lottery" unless that fact is also in the data. Adding plausible-sounding
+  context that you inferred is fabrication. When in doubt, write less, not more.
 - Do NOT add section headers or subheadings beyond the headline.
 - Target 900-1300 words total. Get there by writing MORE bullets — aim for 12-16 bullets
   minimum when the news supports it. The lead stays 4-6 sentences. Bullets stay 2-3 sentences.
@@ -316,6 +328,14 @@ STYLE RULES:
   "it remains to be seen," "only time will tell," "adding to the intrigue."
 - Do not over-explain why something matters. Let the facts speak.
 - Do not editorialize. Report, don't comment.
+- WRITE NATURALLY: Avoid word salad and imprecise phrasing. Re-read every sentence and ask
+  if it actually says what you mean. Example: "the most lopsided series win in franchise
+  history" after a Game 6 score implies Game 6 was the lopsided game. Write it clearly:
+  "San Antonio beat Minnesota by a combined 97 points across the series, the most lopsided
+  second-round result in franchise history."
+- AVOID CLICHE PHRASES: "there is a wrinkle", "there is a catch", "there is a twist",
+  "ruffled feathers", "the optics are complicated", "all eyes will be on", "the plot thickens".
+  Write what actually happened instead.
 - AVOID REPETITION: If a quote already contains a word or idea, do not restate it in the
   surrounding sentence. Example: if Tatum says "he put a lot of pressure on us," do not
   write "Tatum acknowledged the pressure" before the quote. Let the quote do the work.
