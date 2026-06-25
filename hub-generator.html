@@ -1,0 +1,374 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HoopsHype Hub Generator</title>
+<style>
+  :root {
+    --bg: #0f1115;
+    --panel: #181b22;
+    --panel2: #1f232c;
+    --border: #2a2f3a;
+    --text: #e6e8ec;
+    --muted: #9aa3b2;
+    --accent: #e23b3b;
+    --accent2: #3b82f6;
+    --ok: #34d399;
+    --warn: #fbbf24;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 980px; margin: 0 auto; padding: 28px 20px 80px; }
+  h1 { font-size: 22px; margin: 0 0 4px; }
+  .sub { color: var(--muted); margin: 0 0 24px; font-size: 14px; }
+  .card {
+    background: var(--panel); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px; margin-bottom: 18px;
+  }
+  .row { display: flex; gap: 14px; flex-wrap: wrap; align-items: flex-end; }
+  .field { display: flex; flex-direction: column; gap: 6px; }
+  .field label { font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em; }
+  input, select, textarea {
+    background: var(--panel2); border: 1px solid var(--border); color: var(--text);
+    border-radius: 8px; padding: 10px 12px; font: inherit;
+  }
+  input:focus, select:focus, textarea:focus { outline: none; border-color: var(--accent2); }
+  input[type="text"]#tag { min-width: 280px; }
+  input[type="number"] { width: 90px; }
+  button {
+    background: var(--accent); color: #fff; border: none; border-radius: 8px;
+    padding: 11px 18px; font: inherit; font-weight: 600; cursor: pointer;
+  }
+  button.secondary { background: var(--panel2); border: 1px solid var(--border); color: var(--text); }
+  button:disabled { opacity: .5; cursor: default; }
+  .count { font-size: 14px; margin-top: 12px; min-height: 20px; }
+  .count.ok { color: var(--ok); }
+  .count.zero { color: var(--warn); }
+  .count.err { color: var(--accent); }
+  .hint { color: var(--muted); font-size: 13px; margin-top: 6px; }
+  #status { color: var(--muted); font-size: 14px; margin: 8px 0; min-height: 20px; }
+  .output-actions { display: flex; gap: 10px; margin-bottom: 12px; }
+  #htmlOut {
+    width: 100%; min-height: 200px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    white-space: pre; resize: vertical;
+  }
+  .preview {
+    background: #fff; color: #1a1a1a; border-radius: 8px; padding: 22px 26px;
+    margin-top: 14px; font: 16px/1.6 Georgia, serif;
+  }
+  .preview h3 { font: 600 18px/1.3 -apple-system, sans-serif; margin: 22px 0 8px; }
+  .preview p { margin: 0 0 12px; }
+  .preview a { color: #c0392b; }
+  .preview ul { margin: 0 0 12px; padding-left: 22px; }
+  .hidden { display: none; }
+  code { background: var(--panel2); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>HoopsHype Hub Generator</h1>
+  <p class="sub">Tag + window in, Presto-ready hub HTML out. Themed, sourced, anti-slop.</p>
+
+  <div class="card">
+    <div class="row">
+      <div class="field">
+        <label for="tag">Tag (player, team, subject, coach, GM)</label>
+        <input type="text" id="tag" placeholder="e.g. Dillon Brooks" autocomplete="off">
+      </div>
+      <div class="field">
+        <label for="window">Window</label>
+        <select id="window">
+          <option value="24">Last 24 hours</option>
+          <option value="48">Last 48 hours</option>
+          <option value="72" selected>Last 72 hours</option>
+          <option value="168">Last week</option>
+          <option value="custom">Custom (hours)</option>
+        </select>
+      </div>
+      <div class="field hidden" id="customWrap">
+        <label for="customHours">Custom hours</label>
+        <input type="number" id="customHours" min="1" max="2160" value="72">
+      </div>
+      <div class="field">
+        <label for="paras">Lead paragraphs</label>
+        <input type="number" id="paras" min="1" max="10" value="4">
+      </div>
+      <button class="secondary" id="countBtn">Check count</button>
+      <button id="genBtn" disabled>Generate hub</button>
+    </div>
+    <div class="count" id="countMsg"></div>
+    <p class="hint">Check count first to confirm the tag spelling matches the archive and the window has enough to work with. Generate is enabled once a count returns more than zero.</p>
+  </div>
+
+  <div id="status"></div>
+
+  <div class="card hidden" id="outCard">
+    <div class="output-actions">
+      <button id="copyBtn">Copy HTML for Presto</button>
+      <button class="secondary" id="regenBtn">Regenerate</button>
+    </div>
+    <textarea id="htmlOut" spellcheck="false"></textarea>
+    <div class="preview" id="preview"></div>
+  </div>
+</div>
+
+<script>
+// ============================================================================
+// CONFIG
+// ============================================================================
+const ARCHIVE_BASE = "https://hoopshype-rumors-api.thejorgesierra.workers.dev";
+const RELAY_URL = "https://hoopshype-claude-relay.thejorgesierra.workers.dev"; // <-- set to your deployed relay subdomain
+const MODEL = "claude-sonnet-4-6";
+const MAX_ENTRIES = 60; // cap sent to Claude (per archive-articles skill)
+
+// Cache the fetched archive for the session so Check count and Generate don't refetch.
+let archiveCache = null;
+let lastEntries = []; // entries that matched the last count/generate
+
+// ============================================================================
+// EDITORIAL SYSTEM PROMPT  (edit freely — this is where the anti-slop rules live)
+// ============================================================================
+const SYSTEM_PROMPT = `You are an NBA writer for HoopsHype producing a "what we know" hub: a synthesized read on where a single topic stands right now, followed by themed, sourced supporting sections.
+
+You will receive a TAG (the topic) and a list of archive entries (reporter rumors and quotes) about it from a recent window. Write only from those entries. Never invent a fact, date, name, or quote that is not in the data. If the entries are thin on a point, say less rather than filling the gap with a guess.
+
+OUTPUT: clean HTML only. No markdown, no code fences, no preamble. Use only these tags: <p>, <strong>, <a href="...">, <ul>, <li>, <h3>. Do NOT use <h1> or <h2> (the headline lives elsewhere). Start themed sections at <h3>.
+
+STRUCTURE:
+1. A lead of exactly {PARAS} paragraphs synthesizing where the situation stands. Write it like the opening of a real beat-writer notes column, not a summary. Bold player and team names on first mention with <strong>. Name a genuine newsbreaker once if one broke the key development (e.g. "per Shams Charania"). At least one hyperlink in the lead to a source.
+2. Themed sections. Read the entries and name the themes that actually exist in this data (do not force a fixed template). One <h3> per theme, then grouped items as <p> or a <ul> of <li>. Group related items together. As many themes as the news warrants.
+
+ATTRIBUTION AND LINKING:
+- In the lead only, you may name a real newsbreaker.
+- In the themed sections, do NOT write "per [outlet]" or "per [reporter]". Hyperlink a meaningful fact word instead: <a href="URL">missed Game 4</a>. Link a fact or action, never a reporter name, outlet name, "here", or a raw URL.
+- "per HoopsHype" at most once in the whole piece, for the most exclusive item; other HoopsHype items get a link only.
+- Widely known public facts (a score, a series result, a player missing a game) need no attribution.
+- If an entry has no URL, no link and no attribution phrase. Omit.
+- Only use names that appear in the entry TAGS, TEXT or QUOTE. Never complete a partial name. If a quote has no speaker in the data, attribute to the outlet only.
+
+STYLE — follow exactly:
+- No em-dashes (— or --). Use commas or a new sentence.
+- Banned words/phrases: notably, it's worth noting, underscoring, highlighting, showcasing, delve, crucial, game-changing, landscape, nuanced, multifaceted, pivotal, realm, robust, seamless, leverage, utilize, amidst, furthermore, nevertheless, in the wake of, moving forward, going forward, at the end of the day, it remains to be seen, only time will tell, adding to the intrigue.
+- Do not state the obvious or repeat a quote's content in the sentence before it. Let quotes do the work.
+- Do not editorialize. Report, do not comment.
+- Do not lift jokes or framings from source text. Write your own straight description.
+- Tone: between HoopsRumors tight and an Athletic notes column. Natural, human, direct. If a sentence sounds machine-written, rewrite it.
+
+End with: <p>For constantly updated NBA rumors, head to <a href="https://www.hoopshype.com/rumors/">HoopsHype's main Rumors page</a>.</p>`;
+
+// ============================================================================
+// HELPERS
+// ============================================================================
+function setStatus(msg) { document.getElementById("status").textContent = msg; }
+
+function getWindowHours() {
+  const sel = document.getElementById("window").value;
+  if (sel === "custom") return parseInt(document.getElementById("customHours").value || "72", 10);
+  return parseInt(sel, 10);
+}
+
+function cleanUrl(url) {
+  if (!url) return url;
+  try {
+    const u = new URL(url);
+    const strip = ["utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id","fbclid","gclid","mc_cid","mc_eid","r","ref","source"];
+    strip.forEach(p => u.searchParams.delete(p));
+    return u.toString();
+  } catch { return url; }
+}
+
+// Pull entries from the archive. Fetches /latest, and if the oldest entry there
+// is still newer than the cutoff, also pulls /part/1 and merges. Adaptive so we
+// don't drag all 7 parts for a recent window.
+async function loadArchive(cutoffDate) {
+  if (archiveCache) return archiveCache;
+  setStatus("Fetching archive…");
+  const all = [];
+  const latest = await fetchPart(`${ARCHIVE_BASE}/api/rumors/latest`);
+  all.push(...latest);
+  const oldest = all.reduce((min, e) => {
+    const d = e.archive_date || "";
+    return (!min || d < min) ? d : min;
+  }, null);
+  // If latest doesn't reach back to the cutoff, widen to part/1.
+  if (!oldest || oldest > cutoffDate) {
+    setStatus("Widening to part 1 for older entries…");
+    try {
+      const p1 = await fetchPart(`${ARCHIVE_BASE}/api/rumors/part/1`);
+      all.push(...p1);
+    } catch (e) { /* part/1 optional; proceed with latest */ }
+  }
+  archiveCache = all;
+  return all;
+}
+
+async function fetchPart(url) {
+  // Origin-authed GET (tool is hosted on the whitelisted github.io origin).
+  const r = await fetch(url, { method: "GET" });
+  if (!r.ok) throw new Error(`Archive ${r.status} on ${url}`);
+  const data = await r.json();
+  if (Array.isArray(data)) return data;
+  return data.rumors || data.entries || data.data || [];
+}
+
+// Match an entry to the chosen tag: case-insensitive exact match on any element
+// of tags[] or players[]. Precise on purpose — the tag is a real archive tag.
+function matchesTag(entry, tagLower) {
+  const lists = [];
+  if (Array.isArray(entry.tags)) lists.push(...entry.tags);
+  if (Array.isArray(entry.players)) lists.push(...entry.players);
+  return lists.some(t => (t || "").toString().trim().toLowerCase() === tagLower);
+}
+
+function scoreRumor(r) {
+  const text = ((r.text || "") + " " + (r.quote || "")).toLowerCase();
+  const outlet = (r.outlet || "").toLowerCase();
+  let s = 0;
+  const PREMIUM = ["wojnarowski","woj","shams","charania","haynes","stein","windhorst","hoopshype","the athletic","espn","bleacher report"];
+  if (PREMIUM.some(p => outlet.includes(p) || text.includes(p))) s += 10;
+  if (outlet.includes("hoopshype")) s += 5;
+  if (r.quote && r.quote.length > 50) s += 6;
+  const NEWSWORTHY = ["trade","sign","waive","extend","contract","fire","hire","interested","pursuing","targeting","draft","suspend"];
+  s += NEWSWORTHY.reduce((a, kw) => a + (text.includes(kw) ? 2 : 0), 0);
+  if ((r.text || "").length > 300) s += 3;
+  return s;
+}
+
+function cutoffISO(hours) {
+  const d = new Date(Date.now() - hours * 3600 * 1000);
+  return d.toISOString().slice(0, 10); // YYYY-MM-DD (archive is date-only granularity)
+}
+
+async function getMatches() {
+  const tag = document.getElementById("tag").value.trim();
+  if (!tag) throw new Error("Enter a tag first.");
+  const hours = getWindowHours();
+  const cutoff = cutoffISO(hours);
+  const archive = await loadArchive(cutoff);
+  const tagLower = tag.toLowerCase();
+  const matched = archive.filter(e =>
+    (e.archive_date || "") >= cutoff && matchesTag(e, tagLower)
+  );
+  // Sort: date desc, then score desc (late updates beat earlier versions).
+  matched.sort((a, b) => {
+    const dc = (b.archive_date || "").localeCompare(a.archive_date || "");
+    return dc !== 0 ? dc : scoreRumor(b) - scoreRumor(a);
+  });
+  return { tag, hours, matched };
+}
+
+function buildPayload(matched) {
+  const top = matched.slice(0, MAX_ENTRIES);
+  const lines = top.map(e => {
+    const tags = (e.tags || []).join(", ");
+    const url = cleanUrl(e.source_url || "");
+    let block = `---\nDATE:${e.archive_date || ""} | SOURCE:${e.outlet || ""} | URL:${url} | TAGS:${tags}\nTEXT: ${(e.text || "").slice(0, 450)}`;
+    if (e.quote) block += `\nQUOTE: "${e.quote}"`;
+    return block;
+  });
+  return lines.join("\n");
+}
+
+function extractText(apiResponse) {
+  if (apiResponse.error) throw new Error(apiResponse.error.message || apiResponse.error);
+  if (!apiResponse.content) throw new Error("No content in response.");
+  return apiResponse.content
+    .filter(b => b.type === "text")
+    .map(b => b.text)
+    .join("\n")
+    .replace(/```html|```/g, "")
+    .trim();
+}
+
+// ============================================================================
+// ACTIONS
+// ============================================================================
+async function checkCount() {
+  const msg = document.getElementById("countMsg");
+  msg.className = "count";
+  msg.textContent = "Checking…";
+  document.getElementById("genBtn").disabled = true;
+  try {
+    const { tag, hours, matched } = await getMatches();
+    lastEntries = matched;
+    setStatus("");
+    if (matched.length === 0) {
+      msg.className = "count zero";
+      msg.textContent = `0 entries for "${tag}" in the last ${hours}h. Check the spelling against the archive's exact tag, or widen the window.`;
+    } else {
+      msg.className = "count ok";
+      msg.textContent = `${matched.length} entries for "${tag}" in the last ${hours}h. Ready to generate (top ${Math.min(matched.length, MAX_ENTRIES)} will be used).`;
+      document.getElementById("genBtn").disabled = false;
+    }
+  } catch (e) {
+    msg.className = "count err";
+    msg.textContent = e.message;
+    setStatus("");
+  }
+}
+
+async function generate() {
+  const genBtn = document.getElementById("genBtn");
+  genBtn.disabled = true;
+  setStatus("Generating with Claude…");
+  try {
+    const { matched } = await getMatches();
+    if (matched.length === 0) throw new Error("No matches to generate from.");
+    const paras = parseInt(document.getElementById("paras").value || "4", 10);
+    const tag = document.getElementById("tag").value.trim();
+    const payload = buildPayload(matched);
+    const system = SYSTEM_PROMPT.replace("{PARAS}", paras);
+    const userMsg = `TAG: ${tag}\nLEAD PARAGRAPHS: ${paras}\n\nENTRIES:\n${payload}`;
+
+    const r = await fetch(RELAY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        model: MODEL,
+        max_tokens: 4000,
+        system,
+        messages: [{ role: "user", content: userMsg }],
+      }),
+    });
+    const data = await r.json();
+    const html = extractText(data);
+
+    document.getElementById("htmlOut").value = html;
+    document.getElementById("preview").innerHTML = html;
+    document.getElementById("outCard").classList.remove("hidden");
+    setStatus("Done. Copy the HTML, then use the injector on the Presto hub.");
+  } catch (e) {
+    setStatus("Error: " + e.message);
+  } finally {
+    genBtn.disabled = false;
+  }
+}
+
+// ============================================================================
+// WIRING
+// ============================================================================
+document.getElementById("window").addEventListener("change", e => {
+  document.getElementById("customWrap").classList.toggle("hidden", e.target.value !== "custom");
+});
+document.getElementById("countBtn").addEventListener("click", checkCount);
+document.getElementById("genBtn").addEventListener("click", generate);
+document.getElementById("regenBtn").addEventListener("click", generate);
+document.getElementById("copyBtn").addEventListener("click", () => {
+  const ta = document.getElementById("htmlOut");
+  navigator.clipboard.writeText(ta.value).then(() => {
+    const b = document.getElementById("copyBtn");
+    b.textContent = "Copied";
+    setTimeout(() => (b.textContent = "Copy HTML for Presto"), 1500);
+  });
+});
+// Re-checking count invalidates the cache only on window/tag change is overkill;
+// archive content is stable per session, so we keep the cache. Change tag/window
+// freely and Check count refilters the same cached data.
+
+</script>
+</body>
+</html>
