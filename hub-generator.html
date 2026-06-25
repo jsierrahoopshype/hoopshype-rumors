@@ -181,29 +181,17 @@ function cleanUrl(url) {
   } catch { return url; }
 }
 
-// Pull entries from the archive. Fetches /latest, and if the oldest entry there
-// is still newer than the cutoff, also pulls /part/1 and merges. Adaptive so we
-// don't drag all 7 parts for a recent window.
-async function loadArchive(cutoffDate) {
+// Pull the recent archive. part/7 holds 2023-07-07 to present (~112K entries);
+// it is the only part needed for any window up to a few years. Fetched once per
+// session and cached, so the big download happens a single time.
+const RECENT_PART = `${ARCHIVE_BASE}/api/rumors/part/7`;
+
+async function loadArchive() {
   if (archiveCache) return archiveCache;
-  setStatus("Fetching archive…");
-  const all = [];
-  const latest = await fetchPart(`${ARCHIVE_BASE}/api/rumors/latest`);
-  all.push(...latest);
-  const oldest = all.reduce((min, e) => {
-    const d = e.archive_date || "";
-    return (!min || d < min) ? d : min;
-  }, null);
-  // If latest doesn't reach back to the cutoff, widen to part/1.
-  if (!oldest || oldest > cutoffDate) {
-    setStatus("Widening to part 1 for older entries…");
-    try {
-      const p1 = await fetchPart(`${ARCHIVE_BASE}/api/rumors/part/1`);
-      all.push(...p1);
-    } catch (e) { /* part/1 optional; proceed with latest */ }
-  }
-  archiveCache = all;
-  return all;
+  setStatus("Fetching archive (first load can take a few seconds)\u2026");
+  archiveCache = await fetchPart(RECENT_PART);
+  setStatus("");
+  return archiveCache;
 }
 
 async function fetchPart(url) {
@@ -218,10 +206,10 @@ async function fetchPart(url) {
 // Match an entry to the chosen tag: case-insensitive exact match on any element
 // of tags[] or players[]. Precise on purpose — the tag is a real archive tag.
 function matchesTag(entry, tagLower) {
-  const lists = [];
-  if (Array.isArray(entry.tags)) lists.push(...entry.tags);
-  if (Array.isArray(entry.players)) lists.push(...entry.players);
-  return lists.some(t => (t || "").toString().trim().toLowerCase() === tagLower);
+  // The archive stores a single flat tags[] array mixing player, team, subject,
+  // coach, GM. Exact (case-insensitive) match against any element.
+  if (!Array.isArray(entry.tags)) return false;
+  return entry.tags.some(t => (t || "").toString().trim().toLowerCase() === tagLower);
 }
 
 function scoreRumor(r) {
@@ -248,7 +236,7 @@ async function getMatches() {
   if (!tag) throw new Error("Enter a tag first.");
   const hours = getWindowHours();
   const cutoff = cutoffISO(hours);
-  const archive = await loadArchive(cutoff);
+  const archive = await loadArchive();
   const tagLower = tag.toLowerCase();
   const matched = archive.filter(e =>
     (e.archive_date || "") >= cutoff && matchesTag(e, tagLower)
