@@ -125,6 +125,17 @@ const RELAY_URL = "https://hoopshype-claude-relay.thejorgesierra.workers.dev"; /
 const MODEL = "claude-sonnet-4-6";
 const MAX_ENTRIES = 60; // cap sent to Claude (per archive-articles skill)
 
+// Content Stream (nba-content-stream) lives on the SAME github.io origin, so
+// these fetches are same-origin (no CORS). Pre-built per-entity indexes are at
+// data/index/{players|teams}/{slug}.json; manifest maps names -> slugs.
+const CS_BASE = "https://jsierrahoopshype.github.io/nba-content-stream";
+const CS_MAX_MENTIONS = 40; // cap the "latest mentions" list at the bottom
+const CS_SOURCE_LABELS = {
+  "bluesky": "Bluesky", "google-news": "Google News", "reddit": "Reddit",
+  "substack": "Substack", "youtube": "YouTube",
+};
+let csManifestCache = null;
+
 // Cache the fetched archive for the session so Check count and Generate don't refetch.
 let archiveCache = null;
 let lastEntries = []; // entries that matched the last count/generate
@@ -148,11 +159,13 @@ Every name, date, number, team, dollar figure, quote, and claim in your output M
 OUTPUT: clean HTML only. No markdown, no code fences, no preamble. Use only these tags: <p>, <strong>, <a href="...">, <ul>, <li>, <h3>. Do NOT use <h1> or <h2> (the headline lives elsewhere). Start themed sections at <h3>.
 
 STRUCTURE:
-1. A lead of exactly {PARAS} paragraphs synthesizing where the situation stands, built only from the entries. Write it like the opening of a real beat-writer notes column, not a summary. Bold player and team names on first mention with <strong>.
+1. A lead of exactly {PARAS} paragraphs synthesizing where the situation stands, built only from the entries. Write it like the opening of a real beat-writer notes column, not a summary. Bold player and team names on first mention with <strong>. Credit and link reporters/outlets in the lead too (see LINKING) - the lead should attribute its claims, not state them flatly.
 2. Themed sections. Read the entries and name the themes that actually exist in this data (do not force a template). One <h3> per theme, then grouped items as <p> or a <ul> of <li>. As many themes as the entries warrant, and no more.
+3. A final section titled <h3>Where things stand</h3> with a short 2-4 sentence recap that synthesizes the situation as a quick takeaway. Recap only what the entries support; add no new facts.
 
 LINKING AND ATTRIBUTION:
-- The first time you name a given reporter or outlet, hyperlink their name to the source_url of the entry you are drawing that item from: <a href="URL">Brian Windhorst</a>. Every later mention of that same reporter or outlet gets NO link.
+- Credit the reporter or outlet behind every reported claim, in the lead and in every section. Do not state a reported claim without saying who reported it.
+- The first time you name a given reporter or outlet anywhere in the article (including the lead), hyperlink their name to the source_url of the entry you are drawing that item from: <a href="URL">Brian Windhorst</a>. Every later mention of that same reporter or outlet gets NO link.
 - Only ever link to a URL that appears in the supplied entries. Never invent, guess, or modify a URL.
 - If the entry you are citing has no URL, name the reporter or outlet with no link.
 - Attribute each claim to the reporter or outlet tied to it in the data. Never attribute a claim to a reporter not connected to it in the entries.
@@ -167,7 +180,7 @@ STYLE - follow exactly:
 - Do not lift jokes or framings from source text. Write your own straight description.
 - Tone: between HoopsRumors tight and an Athletic notes column. Natural, human, direct. If a sentence sounds machine-written, rewrite it.
 
-End with: <p>For constantly updated NBA rumors, head to <a href="https://www.hoopshype.com/rumors/">HoopsHype's main Rumors page</a>.</p>`;
+Do NOT add a closing "head to HoopsHype" line or any sign-off; that is appended automatically. End after the "Where things stand" recap.`;
 
 // ============================================================================
 // HELPERS
@@ -282,6 +295,85 @@ function extractText(apiResponse) {
 }
 
 // ============================================================================
+// CONTENT STREAM (latest mentions across the web, rendered deterministically)
+// ============================================================================
+
+// Resolve a hub tag (e.g. "LaMelo Ball") to a Content Stream entity by matching
+// the manifest name case-insensitively. Returns {kind, slug, name} or null.
+async function csResolveEntity(tag) {
+  if (!csManifestCache) {
+    const r = await fetch(`${CS_BASE}/data/index/manifest.json`);
+    if (!r.ok) throw new Error(`Content Stream manifest ${r.status}`);
+    csManifestCache = await r.json();
+  }
+  const t = tag.trim().toLowerCase();
+  const p = (csManifestCache.players || []).find(x => (x.name || "").toLowerCase() === t);
+  if (p) return { kind: "players", slug: p.slug, name: p.name };
+  const tm = (csManifestCache.teams || []).find(x => (x.name || "").toLowerCase() === t);
+  if (tm) return { kind: "teams", slug: tm.slug, name: tm.name };
+  return null; // subjects, coaches, GMs etc. aren't in Content Stream
+}
+
+// Pull this entity's mentions, filter to the same window as the hub, dedup, cap.
+async function csFetchMentions(tag, hours) {
+  const ent = await csResolveEntity(tag);
+  if (!ent) return null; // no Content Stream coverage for this tag
+  const r = await fetch(`${CS_BASE}/data/index/${ent.kind}/${ent.slug}.json`);
+  if (!r.ok) return { name: ent.name, items: [] };
+  const data = await r.json();
+  const cutoffMs = Date.now() - hours * 3600 * 1000;
+  let items = (data.items || []).filter(it => {
+    const ts = Date.parse(it.published_at || "");
+    return !isNaN(ts) && ts >= cutoffMs;
+  });
+  // Light dedup by URL, then by normalized title (sources echo each other).
+  const seen = new Set();
+  items = items.filter(it => {
+    const key = (it.url || "") + "|" + (it.title || it.body_excerpt || "").slice(0, 80).toLowerCase().trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  items.sort((a, b) => Date.parse(b.published_at || 0) - Date.parse(a.published_at || 0));
+  return { name: ent.name, items: items.slice(0, CS_MAX_MENTIONS), total: items.length };
+}
+
+function csFmtDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+function escapeHtml(s) {
+  return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
+}
+
+// Build the bottom "Latest mentions" section as clean Presto HTML, or "" if none.
+function csRenderHtml(cs) {
+  if (!cs || !cs.items || cs.items.length === 0) return "";
+  const lis = cs.items.map(it => {
+    let text = (it.title || it.body_excerpt || "").trim();
+    // Bluesky/news titles often jam the raw URL into the text; the item is
+    // already hyperlinked, so strip inline URLs and tidy whitespace.
+    text = text.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
+    if (!text) return "";
+    const label = CS_SOURCE_LABELS[it.source] || it.source || "";
+    const who = it.author ? escapeHtml(it.author) : label;
+    const meta = it.author ? `${who}, ${label}` : label;
+    const date = csFmtDate(it.published_at);
+    const tail = [meta, date].filter(Boolean).join(" · ");
+    const linked = it.url
+      ? `<a href="${escapeHtml(it.url)}">${escapeHtml(text)}</a>`
+      : escapeHtml(text);
+    return `<li>${linked}${tail ? ` (${tail})` : ""}</li>`;
+  }).filter(Boolean).join("\n");
+  if (!lis) return "";
+  return `<h3>Latest ${escapeHtml(cs.name)} mentions across the web</h3>\n<ul>\n${lis}\n</ul>`;
+}
+
+const RUMORS_LINK = `<p>For constantly updated NBA rumors, head to <a href="https://www.hoopshype.com/rumors/">HoopsHype's main Rumors page</a>.</p>`;
+
+// ============================================================================
 // ACTIONS
 // ============================================================================
 async function checkCount() {
@@ -332,12 +424,30 @@ async function generate() {
       }),
     });
     const data = await r.json();
-    const html = extractText(data);
+    let html = extractText(data);
+
+    // Append Content Stream mentions (deterministic, same-origin fetch) + link.
+    setStatus("Fetching Content Stream mentions…");
+    let csNote = "";
+    try {
+      const hours = getWindowHours();
+      const cs = await csFetchMentions(tag, hours);
+      if (cs === null) {
+        csNote = " (no Content Stream coverage for this tag)";
+      } else {
+        const csHtml = csRenderHtml(cs);
+        if (csHtml) html += "\n\n" + csHtml;
+        csNote = ` (+${cs.items.length} Content Stream mentions)`;
+      }
+    } catch (e) {
+      csNote = " (Content Stream fetch failed: " + e.message + ")";
+    }
+    html += "\n\n" + RUMORS_LINK;
 
     document.getElementById("htmlOut").value = html;
     document.getElementById("preview").innerHTML = html;
     document.getElementById("outCard").classList.remove("hidden");
-    setStatus("Done. Copy the HTML, then use the injector on the Presto hub.");
+    setStatus("Done." + csNote + " Copy the HTML, then use the injector on the Presto hub.");
   } catch (e) {
     setStatus("Error: " + e.message);
   } finally {
