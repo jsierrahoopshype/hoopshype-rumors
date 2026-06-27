@@ -139,6 +139,10 @@ const CS_SOURCE_BADGES = {
   "bluesky": "#1185fe", "google-news": "#4285f4", "reddit": "#ff4500",
   "youtube": "#ff0000", "substack": "#ff6719",
 };
+// Which Content Stream sources to include in the hub's mentions section.
+// Google News dominates by volume and buries Bluesky, so it's excluded here.
+// Edit this set to tune what shows.
+const CS_INCLUDE_SOURCES = new Set(["bluesky", "reddit", "youtube", "substack"]);
 let csManifestCache = null;
 
 // Cache the fetched archive for the session so Check count and Generate don't refetch.
@@ -328,6 +332,7 @@ async function csFetchMentions(tag, hours) {
   const data = await r.json();
   const cutoffMs = Date.now() - hours * 3600 * 1000;
   let items = (data.items || []).filter(it => {
+    if (!CS_INCLUDE_SOURCES.has(it.source)) return false; // drop excluded sources (e.g. Google News)
     const ts = Date.parse(it.published_at || "");
     return !isNaN(ts) && ts >= cutoffMs;
   });
