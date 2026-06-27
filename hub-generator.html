@@ -134,6 +134,11 @@ const CS_SOURCE_LABELS = {
   "bluesky": "Bluesky", "google-news": "Google News", "reddit": "Reddit",
   "substack": "Substack", "youtube": "YouTube",
 };
+// Badge background colors (brand-ish). Inline styles survive Presto; classes do not.
+const CS_SOURCE_BADGES = {
+  "bluesky": "#1185fe", "google-news": "#4285f4", "reddit": "#ff4500",
+  "youtube": "#ff0000", "substack": "#ff6719",
+};
 let csManifestCache = null;
 
 // Cache the fetched archive for the session so Check count and Generate don't refetch.
@@ -348,27 +353,33 @@ function escapeHtml(s) {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// Build the bottom "Latest mentions" section as clean Presto HTML, or "" if none.
+// Build the bottom "Latest mentions" section as styled-div cards (the layout
+// proven to survive Presto: bordered box, colored badge, no external images).
 function csRenderHtml(cs) {
   if (!cs || !cs.items || cs.items.length === 0) return "";
-  const lis = cs.items.map(it => {
+  const cards = cs.items.map(it => {
     let text = (it.title || it.body_excerpt || "").trim();
-    // Bluesky/news titles often jam the raw URL into the text; the item is
-    // already hyperlinked, so strip inline URLs and tidy whitespace.
+    // Item is already linked; strip inline URLs and tidy whitespace.
     text = text.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
     if (!text) return "";
     const label = CS_SOURCE_LABELS[it.source] || it.source || "";
-    const who = it.author ? escapeHtml(it.author) : label;
-    const meta = it.author ? `${who}, ${label}` : label;
+    const color = CS_SOURCE_BADGES[it.source] || "#666666";
     const date = csFmtDate(it.published_at);
-    const tail = [meta, date].filter(Boolean).join(" · ");
-    const linked = it.url
+    const badge = label
+      ? `<span style="background:${color};color:#ffffff;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600;">${escapeHtml(label)}</span> `
+      : "";
+    const author = it.author ? `<strong>${escapeHtml(it.author)}</strong> ` : "";
+    const meta = date ? `<span style="color:#777777;">&middot; ${date}</span>` : "";
+    const body = it.url
       ? `<a href="${escapeHtml(it.url)}">${escapeHtml(text)}</a>`
       : escapeHtml(text);
-    return `<li>${linked}${tail ? ` (${tail})` : ""}</li>`;
+    return `<div style="border:1px solid #e3e3e3;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fafafa;">`
+      + `<div style="margin-bottom:6px;font-size:14px;">${badge}${author}${meta}</div>`
+      + `<div>${body}</div>`
+      + `</div>`;
   }).filter(Boolean).join("\n");
-  if (!lis) return "";
-  return `<h3>Latest ${escapeHtml(cs.name)} mentions across the web</h3>\n<ul>\n${lis}\n</ul>`;
+  if (!cards) return "";
+  return `<h3>Latest ${escapeHtml(cs.name)} mentions across the web</h3>\n${cards}`;
 }
 
 const RUMORS_LINK = `<p>For constantly updated NBA rumors, head to <a href="https://www.hoopshype.com/rumors/">HoopsHype's main Rumors page</a>.</p>`;
