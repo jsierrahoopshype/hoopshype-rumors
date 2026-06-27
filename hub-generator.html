@@ -134,10 +134,14 @@ const CS_SOURCE_LABELS = {
   "bluesky": "Bluesky", "google-news": "Google News", "reddit": "Reddit",
   "substack": "Substack", "youtube": "YouTube",
 };
-// Badge background colors (brand-ish). Inline styles survive Presto; classes do not.
-const CS_SOURCE_BADGES = {
-  "bluesky": "#1185fe", "google-news": "#4285f4", "reddit": "#ff4500",
-  "youtube": "#ff0000", "substack": "#ff6719",
+// Per-source style pulled from the Content Stream's own CSS: colored text on a
+// 10%-tint pill, plus a colored dot. Inline styles survive Presto; classes do not.
+const CS_SOURCE_STYLE = {
+  "bluesky":     { color: "#0085ff", tint: "rgba(0,133,255,.10)" },
+  "reddit":      { color: "#ff4500", tint: "rgba(255,69,0,.10)" },
+  "youtube":     { color: "#cc0000", tint: "rgba(204,0,0,.10)" },
+  "substack":    { color: "#ff6719", tint: "rgba(255,103,25,.10)" },
+  "google-news": { color: "#1a73e8", tint: "rgba(26,115,232,.10)" },
 };
 // Which Content Stream sources to include in the hub's mentions section.
 // Google News dominates by volume and buries Bluesky, so it's excluded here.
@@ -358,29 +362,40 @@ function escapeHtml(s) {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// Build the bottom "Latest mentions" section as styled-div cards (the layout
-// proven to survive Presto: bordered box, colored badge, no external images).
+// Build the bottom "Latest mentions" section as cards matching the Content
+// Stream look (proven to survive Presto): white box, tinted source pill with a
+// colored dot, dark headline styled as text (linked, no underline), grey excerpt.
 function csRenderHtml(cs) {
   if (!cs || !cs.items || cs.items.length === 0) return "";
+  const clean = s => (s || "").replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
   const cards = cs.items.map(it => {
-    let text = (it.title || it.body_excerpt || "").trim();
-    // Item is already linked; strip inline URLs and tidy whitespace.
-    text = text.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
-    if (!text) return "";
+    const title = (it.title || "").trim();
+    const excerpt = clean(it.body_excerpt || "");
+    const head = clean(title || excerpt);
+    if (!head) return "";
+    const hasTitle = !!title;
+    const showExcerpt = hasTitle && excerpt && excerpt.toLowerCase() !== clean(title).toLowerCase();
+
     const label = CS_SOURCE_LABELS[it.source] || it.source || "";
-    const color = CS_SOURCE_BADGES[it.source] || "#666666";
+    const st = CS_SOURCE_STYLE[it.source] || { color: "#6e6e73", tint: "rgba(0,0,0,.06)" };
     const date = csFmtDate(it.published_at);
+
+    const dot = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${st.color};margin-right:5px;vertical-align:middle;"></span>`;
     const badge = label
-      ? `<span style="background:${color};color:#ffffff;padding:2px 9px;border-radius:10px;font-size:12px;font-weight:600;">${escapeHtml(label)}</span> `
+      ? `<span style="background:${st.tint};color:${st.color};padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;">${dot}${escapeHtml(label)}</span> `
       : "";
-    const author = it.author ? `<strong>${escapeHtml(it.author)}</strong> ` : "";
-    const meta = date ? `<span style="color:#777777;">&middot; ${date}</span>` : "";
-    const body = it.url
-      ? `<a href="${escapeHtml(it.url)}">${escapeHtml(text)}</a>`
-      : escapeHtml(text);
-    return `<div style="border:1px solid #e3e3e3;border-radius:8px;padding:12px 14px;margin-bottom:10px;background:#fafafa;">`
-      + `<div style="margin-bottom:6px;font-size:14px;">${badge}${author}${meta}</div>`
-      + `<div>${body}</div>`
+    const author = it.author ? `<span style="color:#1d1d1f;font-weight:600;font-size:13px;">${escapeHtml(it.author)}</span> ` : "";
+    const when = date ? `<span style="color:#6e6e73;font-size:13px;">&middot; ${date}</span>` : "";
+
+    const weight = hasTitle ? "600" : "400"; // news headlines bold; social posts regular
+    const headSpan = `<span style="color:#1d1d1f;font-weight:${weight};font-size:15px;line-height:1.4;text-decoration:none;">${escapeHtml(head)}</span>`;
+    const headHtml = it.url ? `<a href="${escapeHtml(it.url)}" style="text-decoration:none;">${headSpan}</a>` : headSpan;
+    const sub = showExcerpt ? `<div style="color:#6e6e73;font-size:13px;line-height:1.45;margin-top:4px;">${escapeHtml(excerpt)}</div>` : "";
+
+    return `<div style="background:#ffffff;border:1px solid #d1d1d6;border-radius:12px;padding:13px 15px;margin-bottom:10px;">`
+      + `<div style="margin-bottom:6px;">${badge}${author}${when}</div>`
+      + `<div>${headHtml}</div>`
+      + sub
       + `</div>`;
   }).filter(Boolean).join("\n");
   if (!cards) return "";
