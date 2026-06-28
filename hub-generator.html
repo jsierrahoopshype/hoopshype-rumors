@@ -147,6 +147,9 @@ const CS_SOURCE_STYLE = {
 // Google News dominates by volume and buries Bluesky, so it's excluded here.
 // Edit this set to tune what shows.
 const CS_INCLUDE_SOURCES = new Set(["bluesky", "reddit", "youtube", "substack"]);
+// Social sources render conversationally ("Author: post text"); others render
+// as headline cards. This matches how the Content Stream presents them.
+const CS_SOCIAL_SOURCES = new Set(["bluesky", "reddit"]);
 let csManifestCache = null;
 
 // Cache the fetched archive for the session so Check count and Generate don't refetch.
@@ -362,41 +365,49 @@ function escapeHtml(s) {
   return (s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;");
 }
 
-// Build the bottom "Latest mentions" section as cards matching the Content
-// Stream look (proven to survive Presto): white box, tinted source pill with a
-// colored dot, dark headline styled as text (linked, no underline), grey excerpt.
+// Build the bottom "Latest mentions" section. Social posts (Bluesky/Reddit)
+// render as "Author: post text" inline like the Content Stream; news/video
+// render as headline cards. Inline styles only (classes don't survive Presto).
 function csRenderHtml(cs) {
   if (!cs || !cs.items || cs.items.length === 0) return "";
   const clean = s => (s || "").replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim();
   const cards = cs.items.map(it => {
-    const title = (it.title || "").trim();
-    const excerpt = clean(it.body_excerpt || "");
-    const head = clean(title || excerpt);
-    if (!head) return "";
-    const hasTitle = !!title;
-    const showExcerpt = hasTitle && excerpt && excerpt.toLowerCase() !== clean(title).toLowerCase();
-
     const label = CS_SOURCE_LABELS[it.source] || it.source || "";
     const st = CS_SOURCE_STYLE[it.source] || { color: "#6e6e73", tint: "rgba(0,0,0,.06)" };
     const date = csFmtDate(it.published_at);
+    const author = it.author ? escapeHtml(it.author) : "";
 
     const dot = `<span style="display:inline-block;width:6px;height:6px;border-radius:50%;background:${st.color};margin-right:5px;vertical-align:middle;"></span>`;
     const badge = label
-      ? `<span style="background:${st.tint};color:${st.color};padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;">${dot}${escapeHtml(label)}</span> `
+      ? `<span style="background:${st.tint};color:${st.color};padding:2px 9px;border-radius:10px;font-size:11px;font-weight:600;">${dot}${escapeHtml(label)}</span>`
       : "";
-    const author = it.author ? `<span style="color:#1d1d1f;font-weight:600;font-size:13px;">${escapeHtml(it.author)}</span> ` : "";
     const when = date ? `<span style="color:#6e6e73;font-size:13px;">&middot; ${date}</span>` : "";
+    const link = inner => it.url
+      ? `<a href="${escapeHtml(it.url)}" style="text-decoration:none;color:inherit;">${inner}</a>`
+      : inner;
 
-    const weight = hasTitle ? "600" : "400"; // news headlines bold; social posts regular
-    const headSpan = `<span style="color:#1d1d1f;font-weight:${weight};font-size:15px;line-height:1.4;text-decoration:none;">${escapeHtml(head)}</span>`;
-    const headHtml = it.url ? `<a href="${escapeHtml(it.url)}" style="text-decoration:none;">${headSpan}</a>` : headSpan;
-    const sub = showExcerpt ? `<div style="color:#6e6e73;font-size:13px;line-height:1.45;margin-top:4px;">${escapeHtml(excerpt)}</div>` : "";
-
-    return `<div style="background:#ffffff;border:1px solid #d1d1d6;border-radius:12px;padding:13px 15px;margin-bottom:10px;">`
-      + `<div style="margin-bottom:6px;">${badge}${author}${when}</div>`
-      + `<div>${headHtml}</div>`
-      + sub
-      + `</div>`;
+    let metaRow, bodyHtml;
+    if (CS_SOCIAL_SOURCES.has(it.source)) {
+      // Conversational: badge + date on top, then "Author: post text" inline.
+      const post = clean(it.body_excerpt || it.title || "");
+      if (!post) return "";
+      metaRow = `<div style="margin-bottom:6px;">${badge} ${when}</div>`;
+      const who = author ? `<span style="color:#1d1d1f;font-weight:700;">${author}</span>: ` : "";
+      bodyHtml = `<div style="color:#1d1d1f;font-size:15px;line-height:1.45;">${link(`${who}<span style="font-weight:400;">${escapeHtml(post)}</span>`)}</div>`;
+    } else {
+      // Headline card: badge + author + date, then bold title, optional excerpt.
+      const title = clean(it.title || it.body_excerpt || "");
+      if (!title) return "";
+      const ex = clean(it.body_excerpt || "");
+      const tl = title.toLowerCase(), el = ex.toLowerCase();
+      const showEx = ex && !!it.title && !tl.includes(el) && !el.includes(tl);
+      const auth = author ? `<span style="color:#1d1d1f;font-weight:600;font-size:13px;">${author}</span> ` : "";
+      metaRow = `<div style="margin-bottom:6px;">${badge} ${auth}${when}</div>`;
+      const head = `<span style="color:#1d1d1f;font-weight:600;font-size:15px;line-height:1.4;">${escapeHtml(title)}</span>`;
+      bodyHtml = `<div>${link(head)}</div>`
+        + (showEx ? `<div style="color:#6e6e73;font-size:13px;line-height:1.45;margin-top:4px;">${escapeHtml(ex)}</div>` : "");
+    }
+    return `<div style="background:#ffffff;border:1px solid #d1d1d6;border-radius:12px;padding:13px 15px;margin-bottom:10px;">${metaRow}${bodyHtml}</div>`;
   }).filter(Boolean).join("\n");
   if (!cards) return "";
   return `<h3>Latest ${escapeHtml(cs.name)} mentions across the web</h3>\n${cards}`;
