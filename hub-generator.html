@@ -314,20 +314,37 @@ function extractText(apiResponse) {
 // CONTENT STREAM (latest mentions across the web, rendered deterministically)
 // ============================================================================
 
-// Resolve a hub tag (e.g. "LaMelo Ball") to a Content Stream entity by matching
-// the manifest name case-insensitively. Returns {kind, slug, name} or null.
+// Resolve a hub tag (e.g. "LaMelo Ball", "Knicks") to a Content Stream entity.
+// Players match on full name; teams also match on nickname (last word, or last
+// two words like "Trail Blazers"), since archive team tags vary. Returns
+// {kind, slug, name} or null.
 async function csResolveEntity(tag) {
   if (!csManifestCache) {
     const r = await fetch(`${CS_BASE}/data/index/manifest.json`);
     if (!r.ok) throw new Error(`Content Stream manifest ${r.status}`);
     csManifestCache = await r.json();
   }
-  const t = tag.trim().toLowerCase();
-  const p = (csManifestCache.players || []).find(x => (x.name || "").toLowerCase() === t);
+  const norm = s => (s || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  const t = norm(tag);
+  if (!t) return null;
+  const players = csManifestCache.players || [];
+  const teams = csManifestCache.teams || [];
+
+  // 1) Exact name match, players first then teams.
+  let p = players.find(x => norm(x.name) === t);
   if (p) return { kind: "players", slug: p.slug, name: p.name };
-  const tm = (csManifestCache.teams || []).find(x => (x.name || "").toLowerCase() === t);
+  let tm = teams.find(x => norm(x.name) === t);
   if (tm) return { kind: "teams", slug: tm.slug, name: tm.name };
-  return null; // subjects, coaches, GMs etc. aren't in Content Stream
+
+  // 2) Team nickname: tag is the last word ("Knicks") or last two ("Trail Blazers").
+  if (t.length >= 4) {
+    tm = teams.find(x => {
+      const words = norm(x.name).split(" ");
+      return words.slice(-1).join(" ") === t || words.slice(-2).join(" ") === t;
+    });
+    if (tm) return { kind: "teams", slug: tm.slug, name: tm.name };
+  }
+  return null; // subjects, coaches, GMs aren't in Content Stream
 }
 
 // Pull this entity's mentions, filter to the same window as the hub, dedup, cap.
@@ -479,7 +496,7 @@ async function generate() {
       } else {
         const csHtml = csRenderHtml(cs);
         if (csHtml) html += "\n\n" + csHtml;
-        csNote = ` (+${cs.items.length} Content Stream mentions)`;
+        csNote = ` (+${cs.items.length} Content Stream mentions for ${cs.name})`;
       }
     } catch (e) {
       csNote = " (Content Stream fetch failed: " + e.message + ")";
