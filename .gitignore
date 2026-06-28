@@ -1,3 +1,26 @@
-hoopshype_rumors_part*.json 
-hoopshype_rumors_latest.json 
-rumors_index.json 
+# HoopsHype repo .gitignore
+# Keeps local scratch, caches, and archive-derived data out of git so
+# `git status` stays clean and nothing sensitive is committed by accident.
+# Note: this only affects UNTRACKED files. Anything already committed is
+# unaffected. To commit a file that matches a rule below, use: git add -f <file>
+
+# Local caches and dependencies
+.wrangler/
+node_modules/
+
+# Archive-derived data exports (never commit per project rules)
+*.csv
+
+# Local analysis / scratch output
+*.txt
+
+# One-off local analysis scripts and output (not part of the deployed tools)
+nba_europe_comprehensive.html
+nba_europe_output.txt
+jokic_*.py
+mental_health_*.py
+extract_nba_europe*.py
+generate_rankings_csv*.py
+trade_deadline_analysis.py
+check_teams2.py
+diagnose_json.py
