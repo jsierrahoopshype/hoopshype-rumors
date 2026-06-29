@@ -1,15 +1,30 @@
 # HoopsHype repo .gitignore
-# Keeps local scratch, caches, and archive-derived data out of git so
+# Keeps local scratch, caches, secrets, and archive-derived data out of git so
 # `git status` stays clean and nothing sensitive is committed by accident.
 # Note: this only affects UNTRACKED files. Anything already committed is
 # unaffected. To commit a file that matches a rule below, use: git add -f <file>
 
+# Secrets and credentials (never commit)
+.env
+.env.*
+*.pem
+*.key
+*.crt
+
 # Local caches and dependencies
 .wrangler/
 node_modules/
+__pycache__/
+*.pyc
+
+# OS cruft
+.DS_Store
+Thumbs.db
 
 # Archive-derived data exports (never commit per project rules)
 *.csv
+hoopshype_rumors_*.json
+rumors_index.json
 
 # Local analysis / scratch output
 *.txt
