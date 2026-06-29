@@ -76,6 +76,13 @@
   <div class="card">
     <div class="row">
       <div class="field">
+        <label for="mode">Mode</label>
+        <select id="mode">
+          <option value="hub" selected>Hub</option>
+          <option value="explainer">Explainer</option>
+        </select>
+      </div>
+      <div class="field">
         <label for="tag">Tag (player, team, subject, coach, GM)</label>
         <input type="text" id="tag" placeholder="e.g. Dillon Brooks" autocomplete="off">
       </div>
@@ -94,14 +101,18 @@
         <input type="number" id="customHours" min="1" max="2160" value="72">
       </div>
       <div class="field">
-        <label for="paras">Lead paragraphs</label>
+        <label for="paras" id="parasLabel">Lead paragraphs</label>
         <input type="number" id="paras" min="1" max="10" value="4">
       </div>
       <button class="secondary" id="countBtn">Check count</button>
       <button id="genBtn" disabled>Generate hub</button>
     </div>
+    <div class="field hidden" id="questionsWrap" style="margin-top:14px;">
+      <label for="questions">Questions (one per line)</label>
+      <textarea id="questions" rows="4" placeholder="What's driving the situation?&#10;Which teams are involved and why?&#10;What happens next?" style="width:100%;"></textarea>
+    </div>
     <div class="count" id="countMsg"></div>
-    <p class="hint">Check count first to confirm the tag spelling matches the archive and the window has enough to work with. Generate is enabled once a count returns more than zero.</p>
+    <p class="hint">Check count first to confirm the tag spelling matches the archive and the window has enough to work with. Generate is enabled once a count returns more than zero. In Explainer mode, enter your questions above.</p>
   </div>
 
   <div id="status"></div>
@@ -123,7 +134,7 @@
 const ARCHIVE_BASE = "https://hoopshype-rumors-api.thejorgesierra.workers.dev";
 const RELAY_URL = "https://hoopshype-claude-relay.thejorgesierra.workers.dev"; // <-- set to your deployed relay subdomain
 const MODEL = "claude-sonnet-4-6";
-const MAX_ENTRIES = 60; // cap sent to Claude (per archive-articles skill)
+const MAX_ENTRIES = 150; // cap of archive entries sent to Claude (both modes). Tunable.
 
 // Content Stream (nba-content-stream) lives on the SAME github.io origin, so
 // these fetches are same-origin (no CORS). Pre-built per-entity indexes are at
@@ -194,6 +205,42 @@ STYLE - follow exactly:
 - Do not state the obvious or restate a quote's content in the sentence before it. Let quotes do the work.
 - Do not editorialize or add commentary. Report what the entries say.
 - Do not lift jokes or framings from source text. Write your own straight description.
+- Tone: between HoopsRumors tight and an Athletic notes column. Natural, human, direct. If a sentence sounds machine-written, rewrite it.
+
+Do NOT add a closing "head to HoopsHype" line or any sign-off; that is appended automatically. End after the "Where things stand" recap.`;
+
+// ============================================================================
+// EXPLAINER SYSTEM PROMPT  (question-driven, draft only, archive-only facts)
+// ============================================================================
+const EXPLAINER_PROMPT = `You are an NBA writer for HoopsHype producing a "what we know" explainer: a short intro, then a direct answer to each of several reader questions about one topic, then a recap. It is a first draft a human will edit before publishing.
+
+You will receive a TAG (the topic), a list of QUESTIONS, and a list of archive ENTRIES (reporter rumors and quotes) about the topic from a recent window. Answer only from the entries.
+
+=== ABSOLUTE RULE: NO OUTSIDE FACTS ===
+Every name, date, number, team, dollar figure, quote, and claim in your output MUST come from the supplied ENTRIES. You are answering ONLY from what is in the entries. Do NOT use your own knowledge of the NBA.
+- If a fact is not in the entries, it does not appear. No exceptions.
+- If the entries do not answer a question, say so plainly in that section (e.g. "The archive has no reporting on this yet.") rather than inventing an answer. Flagging a gap is correct; filling it from memory is a failure.
+- Do NOT add career totals, records, draft history, biographical facts, or "context" not present in the entries.
+- Do NOT infer or extrapolate beyond what the entries state.
+
+OUTPUT: clean HTML only. No markdown, no code fences, no preamble. Use only these tags: <p>, <strong>, <a href="...">, <ul>, <li>, <h3>. Do NOT use <h1> or <h2>. Start question sections at <h3>.
+
+STRUCTURE:
+1. An intro of {PARAS} paragraphs that frames the topic and what is at stake, built only from the entries. Bold the key player/team names on first mention with <strong>.
+2. One <h3> section per question, in the order given. Use the question (lightly cleaned into a headline if needed) as the <h3>, then answer it below in <p> or a <ul> of <li>, drawing only on the entries. Attribute and link as below.
+3. A final section titled <h3>Where things stand</h3>: a short 2-4 sentence recap synthesizing the takeaway across the questions. No new facts.
+
+LINKING AND ATTRIBUTION:
+- Credit the reporter or outlet behind every reported claim. Do not state a reported claim without saying who reported it.
+- The first time you name a given reporter or outlet anywhere (including the intro), hyperlink their name to the source_url of the entry you draw that item from: <a href="URL">Brian Windhorst</a>. Every later mention of that same reporter or outlet gets NO link.
+- Only ever link to a URL that appears in the entries. Never invent, guess, or modify a URL. If the entry has no URL, name the source with no link.
+- Use only names that appear in the entries. Never complete a partial name. If a quote has no named speaker in the entry, attribute to the outlet only.
+
+STYLE - follow exactly:
+- No em-dashes (\u2014 or --). Use commas or a new sentence.
+- Banned words/phrases: notably, it's worth noting, underscoring, highlighting, showcasing, delve, crucial, game-changing, landscape, nuanced, multifaceted, pivotal, realm, robust, seamless, leverage, utilize, amidst, furthermore, nevertheless, in the wake of, moving forward, going forward, at the end of the day, it remains to be seen, only time will tell, adding to the intrigue.
+- Do not editorialize or add commentary. Report what the entries say.
+- Do not restate a quote's content in the sentence before it. Let quotes do the work.
 - Tone: between HoopsRumors tight and an Athletic notes column. Natural, human, direct. If a sentence sounds machine-written, rewrite it.
 
 Do NOT add a closing "head to HoopsHype" line or any sign-off; that is appended automatically. End after the "Where things stand" recap.`;
@@ -466,47 +513,63 @@ async function generate() {
   try {
     const { matched } = await getMatches();
     if (matched.length === 0) throw new Error("No matches to generate from.");
+    const mode = document.getElementById("mode").value;
     const paras = parseInt(document.getElementById("paras").value || "4", 10);
     const tag = document.getElementById("tag").value.trim();
     const payload = buildPayload(matched);
-    const system = SYSTEM_PROMPT.replace("{PARAS}", paras);
-    const userMsg = `TAG: ${tag}\nLEAD PARAGRAPHS: ${paras}\n\nENTRIES:\n${payload}`;
+
+    let system, userMsg, maxTokens;
+    if (mode === "explainer") {
+      const questions = document.getElementById("questions").value
+        .split("\n").map(q => q.trim()).filter(Boolean);
+      if (questions.length === 0) throw new Error("Enter at least one question for Explainer mode.");
+      system = EXPLAINER_PROMPT.replace("{PARAS}", paras);
+      const qList = questions.map((q, i) => `${i + 1}. ${q}`).join("\n");
+      userMsg = `TAG: ${tag}\nINTRO PARAGRAPHS: ${paras}\n\nQUESTIONS:\n${qList}\n\nENTRIES:\n${payload}`;
+      maxTokens = 8000; // explainers can be long (several answered questions)
+    } else {
+      system = SYSTEM_PROMPT.replace("{PARAS}", paras);
+      userMsg = `TAG: ${tag}\nLEAD PARAGRAPHS: ${paras}\n\nENTRIES:\n${payload}`;
+      maxTokens = 4000;
+    }
 
     const r = await fetch(RELAY_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
         model: MODEL,
-        max_tokens: 4000,
+        max_tokens: maxTokens,
         system,
         messages: [{ role: "user", content: userMsg }],
       }),
     });
     const data = await r.json();
     let html = extractText(data);
-
-    // Append Content Stream mentions (deterministic, same-origin fetch) + link.
-    setStatus("Fetching Content Stream mentions…");
     let csNote = "";
-    try {
-      const hours = getWindowHours();
-      const cs = await csFetchMentions(tag, hours);
-      if (cs === null) {
-        csNote = " (no Content Stream coverage for this tag)";
-      } else {
-        const csHtml = csRenderHtml(cs);
-        if (csHtml) html += "\n\n" + csHtml;
-        csNote = ` (+${cs.items.length} Content Stream mentions for ${cs.name})`;
+
+    // Content Stream cards are a hub feature only; explainer is draft-only.
+    if (mode !== "explainer") {
+      setStatus("Fetching Content Stream mentions…");
+      try {
+        const hours = getWindowHours();
+        const cs = await csFetchMentions(tag, hours);
+        if (cs === null) {
+          csNote = " (no Content Stream coverage for this tag)";
+        } else {
+          const csHtml = csRenderHtml(cs);
+          if (csHtml) html += "\n\n" + csHtml;
+          csNote = ` (+${cs.items.length} Content Stream mentions for ${cs.name})`;
+        }
+      } catch (e) {
+        csNote = " (Content Stream fetch failed: " + e.message + ")";
       }
-    } catch (e) {
-      csNote = " (Content Stream fetch failed: " + e.message + ")";
     }
     html += "\n\n" + RUMORS_LINK;
 
     document.getElementById("htmlOut").value = html;
     document.getElementById("preview").innerHTML = html;
     document.getElementById("outCard").classList.remove("hidden");
-    setStatus("Done." + csNote + " Copy the HTML, then use the injector on the Presto hub.");
+    setStatus("Done." + csNote + " Copy the HTML, then use the injector on the Presto page.");
   } catch (e) {
     setStatus("Error: " + e.message);
   } finally {
@@ -519,6 +582,12 @@ async function generate() {
 // ============================================================================
 document.getElementById("window").addEventListener("change", e => {
   document.getElementById("customWrap").classList.toggle("hidden", e.target.value !== "custom");
+});
+document.getElementById("mode").addEventListener("change", e => {
+  const explainer = e.target.value === "explainer";
+  document.getElementById("questionsWrap").classList.toggle("hidden", !explainer);
+  document.getElementById("parasLabel").textContent = explainer ? "Intro paragraphs" : "Lead paragraphs";
+  document.getElementById("genBtn").textContent = explainer ? "Generate explainer" : "Generate hub";
 });
 document.getElementById("countBtn").addEventListener("click", checkCount);
 document.getElementById("genBtn").addEventListener("click", generate);
