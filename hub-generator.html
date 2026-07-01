@@ -104,6 +104,21 @@
         <label for="paras" id="parasLabel">Lead paragraphs</label>
         <input type="number" id="paras" min="1" max="10" value="4">
       </div>
+      <div class="field">
+        <label for="length">Length</label>
+        <select id="length">
+          <option value="short">Short</option>
+          <option value="medium" selected>Medium</option>
+          <option value="long">Long</option>
+        </select>
+      </div>
+      <div class="field">
+        <label for="bullets">Bullet points</label>
+        <select id="bullets">
+          <option value="allow" selected>Allow (where they fit)</option>
+          <option value="none">None (prose only)</option>
+        </select>
+      </div>
       <button class="secondary" id="countBtn">Check count</button>
       <button id="genBtn" disabled>Generate hub</button>
     </div>
@@ -245,7 +260,8 @@ LINKING AND ATTRIBUTION:
 
 STYLE - follow exactly:
 - No em-dashes (\u2014 or --). Use commas or a new sentence.
-- VOICE: warm, conversational HoopsHype article voice. A confident narrator who knows the league and is talking to a fan who follows it. Contractions throughout. Varied rhythm: developed sentences with the occasional short, punchy one for emphasis ("So, yeah, don't expect a trade here."). Natural second person ("you") where it genuinely lands. An occasional wry aside or rhetorical question is welcome, used sparingly ("who could fault him for wanting out?"). Do NOT use first-person plural ("we", "us", "our"). Don't over-explain why something matters; report it with a light, knowing touch and trust the reader.
+- VOICE: warm, conversational HoopsHype article voice. A confident narrator who knows the league and is talking to a fan who follows it. Contractions throughout. Varied rhythm: developed sentences with the occasional short, punchy one for emphasis ("So, yeah, don't expect a trade here."). Natural second person ("you") where it genuinely lands. An occasional wry aside or rhetorical question is welcome, used sparingly ("who could fault him for wanting out?"). Do NOT use first-person plural ("we", "us", "our"). A LIGHT touch of editorializing is fine and matches the voice ("that just goes to show how fast this is moving") but keep it light and occasional, never more than a clause, never overwrought, and never so often it starts to feel like commentary rather than reporting.
+- STANDALONE PUNCH LINES: occasionally drop in a short, isolated one-line sentence as its own paragraph for emphasis, HoopsHype-style ("Hard to fathom." / "Stay tuned."). Use sparingly, maybe once or twice in the whole piece, never every section.
 - FLOW is the top priority and the thing most likely to go wrong. The piece must read as one connected story, not a list of attributed facts. Chain the reporting: each new report reacts to, extends, or contradicts the last, with a transition carrying the reader across. Weave several reports about the same thread into one paragraph. Open sections with a take, close them with a landing line, and bridge between them. Think of the sampled HoopsHype trade-rumor columns: confident lead, sources woven with transitions, a punchy button at the end. If a paragraph reads like separate sentences sitting next to each other, rewrite it until it flows.
 - Banned words/phrases: notably, it's worth noting, underscoring, highlighting, showcasing, delve, crucial, game-changing, landscape, nuanced, multifaceted, pivotal, realm, robust, seamless, leverage, utilize, amidst, furthermore, nevertheless, in the wake of, moving forward, going forward, at the end of the day, it remains to be seen, only time will tell, adding to the intrigue.
 - Do not editorialize. Report what reporters have said.
@@ -535,19 +551,31 @@ async function generate() {
     const tag = document.getElementById("tag").value.trim();
     const payload = buildPayload(matched);
 
+    const LENGTH_SPEC = {
+      short:  "Keep the whole piece tight: brief sections, no padding, every sentence earning its place.",
+      medium: "Standard length: developed sections, but no filler.",
+      long:   "A fuller treatment: more developed sections with more of the supporting reporting woven in, still with no padding or filler.",
+    };
+    const lengthKey = document.getElementById("length").value;
+    const bulletsKey = document.getElementById("bullets").value;
+    const bulletsRule = bulletsKey === "none"
+      ? "Do not use bullet lists anywhere in this piece. Prose only."
+      : "Bullet lists are allowed where the content is genuinely a list; keep the default preference for prose.";
+    const lengthNote = `\n\nLENGTH: ${LENGTH_SPEC[lengthKey]}\nBULLETS: ${bulletsRule}`;
+
     let system, userMsg, maxTokens;
     if (mode === "explainer") {
       const questions = document.getElementById("questions").value
         .split("\n").map(q => q.trim()).filter(Boolean);
       if (questions.length === 0) throw new Error("Enter at least one question for Explainer mode.");
-      system = EXPLAINER_PROMPT.replace("{PARAS}", paras);
+      system = EXPLAINER_PROMPT.replace("{PARAS}", paras) + lengthNote;
       const qList = questions.map((q, i) => `${i + 1}. ${q}`).join("\n");
       userMsg = `TAG: ${tag}\nINTRO PARAGRAPHS: ${paras}\n\nQUESTIONS:\n${qList}\n\nENTRIES:\n${payload}`;
-      maxTokens = 8000; // explainers can be long (several answered questions)
+      maxTokens = lengthKey === "long" ? 12000 : (lengthKey === "short" ? 5000 : 8000);
     } else {
-      system = SYSTEM_PROMPT.replace("{PARAS}", paras);
+      system = SYSTEM_PROMPT.replace("{PARAS}", paras) + lengthNote;
       userMsg = `TAG: ${tag}\nLEAD PARAGRAPHS: ${paras}\n\nENTRIES:\n${payload}`;
-      maxTokens = 4000;
+      maxTokens = lengthKey === "long" ? 6000 : (lengthKey === "short" ? 2500 : 4000);
     }
 
     const r = await fetch(RELAY_URL, {
