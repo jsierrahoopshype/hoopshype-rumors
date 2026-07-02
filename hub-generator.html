@@ -125,6 +125,10 @@
     <div class="field hidden" id="questionsWrap" style="margin-top:14px;">
       <label for="questions">Questions (one per line)</label>
       <textarea id="questions" rows="4" placeholder="What's driving the situation?&#10;Which teams are involved and why?&#10;What happens next?" style="width:100%;"></textarea>
+      <div style="margin-top:8px;">
+        <button class="secondary" id="suggestBtn" disabled>Suggest questions from this data</button>
+        <span id="suggestMsg" style="color:var(--muted);font-size:13px;margin-left:8px;"></span>
+      </div>
     </div>
     <div class="count" id="countMsg"></div>
     <p class="hint">Check count first to confirm the tag spelling matches the archive and the window has enough to work with. Generate is enabled once a count returns more than zero. In Explainer mode, enter your questions above.</p>
@@ -206,13 +210,13 @@ STRUCTURE:
 3. A final section titled <h3>Where things stand</h3> with a short 2-4 sentence recap that synthesizes the situation as a quick takeaway. Recap only what the entries support; add no new facts.
 
 LINKING AND ATTRIBUTION:
-- Credit the reporter or outlet behind every reported claim, in the lead and in every section. Do not state a reported claim without saying who reported it.
+- Attribute at the SOURCE level, not the sentence level. When several consecutive sentences come from the same report or reporter, name them once, then continue with light connective tissue ("He added that...", "The report also noted...", "That same piece said...") or just continue the thought without re-naming them every sentence. Do not open every sentence with "According to X" or "Y reported" back to back; that kills the flow. Vary how attribution is placed: sometimes lead with the fact and tuck the source at the end of the sentence, sometimes lead with the source, sometimes let one attribution cover two or three sentences of related detail.
 - The first time you name a given reporter or outlet anywhere in the article (including the lead), hyperlink their name to the source_url of the entry you are drawing that item from: <a href="URL">Brian Windhorst</a>. Every later mention of that same reporter or outlet gets NO link.
 - Only ever link to a URL that appears in the supplied entries. Never invent, guess, or modify a URL.
 - If the entry you are citing has no URL, name the reporter or outlet with no link.
-- Attribute each claim to the reporter or outlet tied to it in the data. Never attribute a claim to a reporter not connected to it in the entries.
+- Never attribute a claim to a reporter not connected to it in the entries.
 - Use only names that appear in the entries. Never complete a partial name or add a first name that is not in the data. If a quote has no named speaker in the entry, attribute it to the outlet only.
-- Widely known public facts that are stated in the entries (a score, a series result) need no link.
+- Widely known public facts that are stated in the entries (a score, a series result) need no attribution at all.
 
 STYLE - follow exactly:
 - No em-dashes (\u2014 or --). Use commas or a new sentence.
@@ -253,7 +257,7 @@ STRUCTURE:
 3. A final section titled exactly <h3>TL;DR</h3> (not "Where things stand"): a short 2-4 sentence recap of the takeaway. No new facts.
 
 LINKING AND ATTRIBUTION:
-- Credit the reporter or outlet behind every reported claim, naturally in the sentence ("per Shams Charania", "Brian Windhorst reported"). This is normal sportswriting attribution, not machinery.
+- Attribute at the SOURCE level, not the sentence level. Name a reporter once, then let one attribution cover the next sentence or two of related detail before naming the next source. Do not stack "X said A. Y said B. Z said C." Vary where the attribution sits in the sentence, sometimes leading, sometimes trailing.
 - The first time you name a given reporter or outlet anywhere, hyperlink their name to the source_url for that item: <a href="URL">Brian Windhorst</a>. Every later mention of that same reporter or outlet gets NO link.
 - Only ever link to a URL present in the material. Never invent, guess, or modify a URL. If an item has no URL, name the source with no link.
 - Use only names that appear in the material. Never complete a partial name. If a quote has no named speaker, attribute to the outlet only.
@@ -512,6 +516,41 @@ function csRenderHtml(cs) {
 
 const RUMORS_LINK = `<p>For constantly updated NBA rumors, head to <a href="https://www.hoopshype.com/rumors/">HoopsHype's main Rumors page</a>.</p>`;
 
+// Propose explainer questions grounded in the entries actually pulled for this
+// tag/window (from lastEntries, set by checkCount). Varies per tag since it
+// reads the real data, not a fixed generic list.
+async function suggestQuestions() {
+  const btn = document.getElementById("suggestBtn");
+  const msg = document.getElementById("suggestMsg");
+  if (!lastEntries || lastEntries.length === 0) {
+    msg.textContent = "Run Check count first.";
+    return;
+  }
+  btn.disabled = true;
+  msg.textContent = "Reading the data…";
+  try {
+    const tag = document.getElementById("tag").value.trim();
+    const payload = buildPayload(lastEntries);
+    const system = `You suggest reader questions for an NBA explainer article about one topic. You will get a TAG and archive entries. Propose 6-8 specific questions that THIS data can actually answer, grounded in what's really in these entries, not generic boilerplate. Prefer concrete, specific phrasing over vague ones (e.g. "Why did the Celtics decide to trade Brown now?" not "What happened?"). Cover different angles across the questions: the core development, the mechanics/money, the people involved, the reactions, what's next, only where each is genuinely supported by the entries. Do not repeat the same angle twice. Output ONLY the questions, one per line, no numbering, no markdown, no preamble, no commentary.`;
+    const userMsg = `TAG: ${tag}\n\nENTRIES:\n${payload}`;
+    const r = await fetch(RELAY_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ model: MODEL, max_tokens: 500, system, messages: [{ role: "user", content: userMsg }] }),
+    });
+    const data = await r.json();
+    const text = extractText(data);
+    const qs = text.split("\n").map(l => l.replace(/^[\-\*\d.\)]+\s*/, "").trim()).filter(Boolean);
+    if (qs.length === 0) throw new Error("No questions returned.");
+    document.getElementById("questions").value = qs.join("\n");
+    msg.textContent = `${qs.length} suggested — edit freely before generating.`;
+  } catch (e) {
+    msg.textContent = "Error: " + e.message;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 // ============================================================================
 // ACTIONS
 // ============================================================================
@@ -520,6 +559,7 @@ async function checkCount() {
   msg.className = "count";
   msg.textContent = "Checking…";
   document.getElementById("genBtn").disabled = true;
+  document.getElementById("suggestBtn").disabled = true;
   try {
     const { tag, hours, matched } = await getMatches();
     lastEntries = matched;
@@ -531,6 +571,7 @@ async function checkCount() {
       msg.className = "count ok";
       msg.textContent = `${matched.length} entries for "${tag}" in the last ${hours}h. Ready to generate (top ${Math.min(matched.length, MAX_ENTRIES)} will be used).`;
       document.getElementById("genBtn").disabled = false;
+      document.getElementById("suggestBtn").disabled = false;
     }
   } catch (e) {
     msg.className = "count err";
@@ -635,6 +676,7 @@ document.getElementById("mode").addEventListener("change", e => {
   document.getElementById("genBtn").textContent = explainer ? "Generate explainer" : "Generate hub";
 });
 document.getElementById("countBtn").addEventListener("click", checkCount);
+document.getElementById("suggestBtn").addEventListener("click", suggestQuestions);
 document.getElementById("genBtn").addEventListener("click", generate);
 document.getElementById("regenBtn").addEventListener("click", generate);
 document.getElementById("copyBtn").addEventListener("click", () => {
