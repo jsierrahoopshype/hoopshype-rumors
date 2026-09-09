@@ -1,6 +1,45 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
+<script>
+/* Archive password (added Sept 2026). The archive's bulk endpoints now require
+   a key. This asks for it once and keeps it in this browser's localStorage,
+   then attaches it to every call this page makes to the archive Worker.
+   Mistyped it? Add ?resetkey=1 to the page address and reload. */
+(function () {
+  var API_HOST = 'hoopshype-rumors-api.thejorgesierra.workers.dev';
+  try {
+    if (new URLSearchParams(location.search).has('resetkey')) {
+      localStorage.removeItem('hh_api_key');
+    }
+  } catch (e) {}
+  function hhKey() {
+    var k = '';
+    try { k = localStorage.getItem('hh_api_key') || ''; } catch (e) {}
+    if (!k) {
+      k = (prompt('Password for the HoopsHype rumors archive:') || '').trim();
+      if (k) { try { localStorage.setItem('hh_api_key', k); } catch (e) {} }
+    }
+    return k;
+  }
+  var realFetch = window.fetch;
+  window.fetch = function (input, init) {
+    var u = '';
+    try { u = (typeof input === 'string') ? input : ((input && input.url) || ''); } catch (e) {}
+    if (u.indexOf(API_HOST) !== -1) {
+      init = Object.assign({}, init || {});
+      var h;
+      try { h = new Headers(init.headers || (typeof input !== 'string' ? input.headers : undefined)); }
+      catch (e) { h = new Headers(); }
+      h.set('X-API-Key', hhKey());
+      init.headers = h;
+      if (typeof input !== 'string') { input = u; }
+    }
+    return realFetch.call(window, input, init);
+  };
+})();
+</script>
+
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>HoopsHype Rumors Archive - 15 Years of NBA Rumors</title>
