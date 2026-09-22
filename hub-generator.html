@@ -105,6 +105,28 @@
   .preview ul { margin: 0 0 12px; padding-left: 22px; }
   .hidden { display: none; }
   code { background: var(--panel2); padding: 2px 6px; border-radius: 4px; font-size: 13px; }
+  /* --- Living hub mode (additive; nothing above is changed) --- */
+  .lh-box { margin-bottom: 16px; }
+  .lh-box .lh-head {
+    display: flex; align-items: center; gap: 10px; margin-bottom: 6px;
+  }
+  .lh-box .lh-head label {
+    font-size: 12px; color: var(--muted); text-transform: uppercase; letter-spacing: .04em;
+  }
+  .lh-box .lh-head .lh-len { font-size: 12px; color: var(--muted); }
+  .lh-box input[type="text"], .lh-box textarea { width: 100%; }
+  .lh-box textarea {
+    min-height: 220px; font: 13px/1.5 ui-monospace, Menlo, Consolas, monospace;
+    white-space: pre-wrap; resize: vertical;
+  }
+  .lh-box button { padding: 7px 12px; font-size: 13px; }
+  #lintPanel { border-top: 1px solid var(--border); padding-top: 14px; margin-top: 4px; }
+  #lintPanel h2 { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); margin: 0 0 8px; }
+  #lintPanel ul { margin: 0; padding-left: 20px; }
+  #lintPanel li { font-size: 13px; margin-bottom: 5px; color: var(--warn); }
+  #lintPanel li.clean { color: var(--ok); list-style: none; margin-left: -20px; }
+  #lintPanel li.issue { color: var(--muted); }
+  input[type="text"]#focus { min-width: 260px; }
 </style>
 </head>
 <body>
@@ -119,6 +141,7 @@
         <select id="mode">
           <option value="hub" selected>Hub</option>
           <option value="explainer">Explainer</option>
+          <option value="living">Living hub</option>
         </select>
       </div>
       <div class="field">
@@ -158,6 +181,10 @@
           <option value="none">None (prose only)</option>
         </select>
       </div>
+      <div class="field hidden" id="livingWrap">
+        <label for="focus">Storyline focus (optional)</label>
+        <input type="text" id="focus" placeholder="e.g. contract extension" autocomplete="off">
+      </div>
       <button class="secondary" id="countBtn">Check count</button>
       <button id="genBtn" disabled>Generate hub</button>
     </div>
@@ -182,6 +209,36 @@
     </div>
     <textarea id="htmlOut" spellcheck="false"></textarea>
     <div class="preview" id="preview"></div>
+  </div>
+
+  <div class="card hidden" id="livingOutCard">
+    <div class="lh-box">
+      <div class="lh-head">
+        <label for="lhHeadline">Headline</label>
+        <span class="lh-len" id="lhHeadlineLen"></span>
+        <button class="secondary" id="lhCopyHeadline">Copy headline</button>
+      </div>
+      <input type="text" id="lhHeadline" spellcheck="false">
+    </div>
+    <div class="lh-box">
+      <div class="lh-head">
+        <label for="lhMeta">Meta description</label>
+        <span class="lh-len" id="lhMetaLen"></span>
+        <button class="secondary" id="lhCopyMeta">Copy meta description</button>
+      </div>
+      <input type="text" id="lhMeta" spellcheck="false">
+    </div>
+    <div class="lh-box">
+      <div class="lh-head">
+        <label for="lhBody">Body HTML</label>
+        <button class="secondary" id="lhCopyBody">Copy body HTML</button>
+      </div>
+      <textarea id="lhBody" spellcheck="false"></textarea>
+    </div>
+    <div id="lintPanel" class="hidden">
+      <h2>Lint warnings</h2>
+      <ul id="lintList"></ul>
+    </div>
   </div>
 </div>
 
@@ -622,6 +679,8 @@ async function checkCount() {
 }
 
 async function generate() {
+  // Living hub has its own two-pass pipeline; the Hub/Explainer path below is untouched.
+  if (document.getElementById("mode").value === "living") return generateLivingHub();
   const genBtn = document.getElementById("genBtn");
   genBtn.disabled = true;
   setStatus("Generating with Claude…");
@@ -731,6 +790,408 @@ document.getElementById("copyBtn").addEventListener("click", () => {
 // Re-checking count invalidates the cache only on window/tag change is overkill;
 // archive content is stable per session, so we keep the cache. Change tag/window
 // freely and Check count refilters the same cached data.
+
+// ============================================================================
+// LIVING HUB MODE (additive — nothing above this block is modified)
+// A continuously-updatable single-storyline page: writer pass, editor pass,
+// then a code-built "around the web" section and a code-run lint panel.
+// ============================================================================
+
+// Style bans shared by the prompts and the lint panel.
+const LH_BANNED_PHRASES = [
+  "delve", "leverage", "seamless", "robust", "navigate", "unlock", "unleash",
+  "foster", "intricate", "tapestry", "testament", "in the realm of",
+  "it's worth noting", "it is worth noting", "it's important to remember",
+  "it is important to remember", "not nothing", "not accidental",
+  "meaningful backdrop", "tells you", "rounding error", "franchise-altering",
+  "it's not just", "it is not just",
+];
+const LH_ALLOWED_TAGS = ["p", "a", "strong", "em", "h3"];
+const LH_MIN_WORDS = 350;
+const LH_MAX_WORDS = 550;
+const LH_MAX_HEADLINE = 70;
+const LH_MAX_META = 155;
+
+// Content Stream section rules for this mode (deliberately stricter and
+// plainer than the hub's card rendering).
+const LH_CS_MAX_ITEMS = 6;
+const LH_CS_WINDOW_HOURS = 24 * 7;
+const LH_CS_MIN_ITEMS = 2;
+const LH_CS_BLOCKLIST = [
+  "bet", "betr", "betting", "sportsbook", "draftkings", "fanduel",
+  "prizepicks", "underdog", "promo code", "use code", "odds boost",
+  "parlay", "sponsor",
+];
+
+const LIVING_WRITER_PROMPT = `You are an NBA writer for HoopsHype producing a LIVING HUB: one page about one storyline, rewritten from scratch every time there is news, so it always reads as current.
+
+You will receive a PLAYER, an optional STORYLINE FOCUS, an UPDATED STAMP string, and a list of archive ENTRIES (reporter rumors and quotes) newest first.
+
+=== ABSOLUTE RULE: NO OUTSIDE FACTS ===
+Every name, date, number, team, dollar figure, quote and claim MUST come from the supplied ENTRIES. Do not use your own NBA knowledge to add anything. If a fact is not in the entries, it does not appear.
+
+=== STORYLINE DISCIPLINE ===
+- Use ONLY entries that are about the storyline focus. Everything else is ignored, however interesting.
+- If no storyline focus is given, identify the single dominant storyline across the last 14 days of entries and use only entries about that one. Do not blend two storylines.
+- Ignore tangential quotes, unrelated trade chatter and general commentary.
+
+=== FIXED STRUCTURE (exactly this, in this order) ===
+1. First line, before any heading, exactly: <p><em>Updated {STAMP}</em></p> — copy the UPDATED STAMP string verbatim, do not reformat it, do not invent a different time.
+2. A lead paragraph with no heading: what is new in the latest 24-48 hours of entries.
+3. <h3>What we know</h3> followed by <p> paragraphs: the core facts — money, terms, leverage, other teams involved.
+4. <h3>What comes next</h3> followed by <p> paragraphs: dated deadlines and upcoming events that the entries actually name.
+Every section is an <h3> followed by <p> paragraphs. No other headings, no other sections.
+
+=== NO REPETITION ===
+State each fact ONCE in the whole piece. A dollar figure, a term length, a team's interest, a deadline: once. If it appeared in the lead, it does not reappear under "What we know."
+
+=== ATTRIBUTION ===
+Attribute every reported fact inline, linking the reporter or outlet to the source URL from that entry: <a href="https://example.com/story">Shams Charania</a> reported... Use the URL exactly as given in the entry. Never link to a URL that is not in the entries.
+
+=== FORMATTING ===
+- Allowed tags ONLY: p, a, strong, em, h3. No ul, ol, li, table, div, span, br, h1, h2, h4. No inline styles. No class attributes. No emojis. No markdown.
+- Bold (<strong>) team and player names on FIRST mention only, never again.
+
+=== VOICE ===
+Third person throughout. No "we", no "I", no first person of any kind. Minor analytical reads are fine where the entries support them. No hot takes, no predictions presented as fact.
+
+=== STYLE BANS ===
+- No em dashes anywhere. Use commas, parentheses or periods.
+- No "it's not just X, it's Y" constructions.
+- Never use these words or phrases: delve, leverage, seamless, robust, navigate, unlock, unleash, foster, intricate, tapestry, testament, "in the realm of", "it's worth noting", "it's important to remember", "not nothing", "not accidental", "meaningful backdrop", "tells you", "rounding error", "franchise-altering".
+- No throat-clearing intro. Open on the news, not on setup.
+
+=== LENGTH ===
+350 to 550 words of body copy. Count before you answer.
+
+=== HEADLINE AND META ===
+- headline: pattern "[Player] [storyline]: latest updates" — specific about the storyline, max 70 characters.
+- meta_description: max 155 characters, specific facts, no clickbait, no questions.
+
+=== OUTPUT ===
+Return ONLY a JSON object, no preamble, no code fence, no commentary:
+{"headline": "...", "meta_description": "...", "body_html": "..."}
+body_html is the full article HTML as a single string. Do not add a closing "head to HoopsHype" line or any sign-off; that is appended automatically.`;
+
+const LIVING_EDITOR_PROMPT = `You are a HoopsHype copy editor checking a living hub draft against its source material. You will receive a PLAYER, an optional STORYLINE FOCUS, the DRAFT as JSON, and the same archive ENTRIES the writer used.
+
+Edit the draft. Do all of this:
+1. REPETITION: remove any fact stated more than once, keeping the clearest single instance. Dollar figures, contract terms, team interest, deadlines: once each in the whole piece.
+2. NUMBERS: check every number, dollar figure, year, game count and date against the ENTRIES. Fix anything that misstates an entry. Remove anything no entry supports. Never add a number of your own.
+3. CONTRADICTIONS: flag and fix internal contradictions. Example: a stated floor that equals the offer on the table but is described as a gap between the two sides. Make the piece internally consistent with the entries.
+4. STYLE BANS: remove every em dash. Remove every "it's not just X, it's Y" construction. Remove these words and phrases: delve, leverage, seamless, robust, navigate, unlock, unleash, foster, intricate, tapestry, testament, "in the realm of", "it's worth noting", "it's important to remember", "not nothing", "not accidental", "meaningful backdrop", "tells you", "rounding error", "franchise-altering". No first person. No throat-clearing intro.
+5. TAGS: allowed tags are ONLY p, a, strong, em, h3. Convert or remove anything else. No inline styles, no class attributes, no emojis. Team and player names bolded on first mention only.
+6. STRUCTURE: keep the <p><em>Updated ...</em></p> first line verbatim, then the unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3>. Keep every inline source link. Keep the body between 350 and 550 words.
+7. HEADLINE/META: headline max 70 characters, meta_description max 155 characters. Tighten if over.
+
+Return ONLY a JSON object, no preamble, no code fence:
+{"headline": "...", "meta_description": "...", "body_html": "...", "issues": ["short description of each change you made"]}
+If you changed nothing, return an empty issues array.`;
+
+// AP-style month abbreviations: March through July are never abbreviated.
+const LH_AP_MONTHS = {
+  January: "Jan.", February: "Feb.", March: "March", April: "April",
+  May: "May", June: "June", July: "July", August: "Aug.",
+  September: "Sept.", October: "Oct.", November: "Nov.", December: "Dec.",
+};
+
+// "Sept. 22, 2026, 3:05 p.m. ET" for the <em>Updated ...</em> line, always in
+// Eastern time regardless of where the browser is.
+function lhUpdatedStamp(now) {
+  const d = now || new Date();
+  const parts = {};
+  new Intl.DateTimeFormat("en-US", {
+    timeZone: "America/New_York", month: "long", day: "numeric", year: "numeric",
+    hour: "numeric", minute: "2-digit", hour12: true,
+  }).formatToParts(d).forEach(p => { parts[p.type] = p.value; });
+  const month = LH_AP_MONTHS[parts.month] || parts.month;
+  const ampm = (parts.dayPeriod || "").toUpperCase() === "AM" ? "a.m." : "p.m.";
+  return `${month} ${parts.day}, ${parts.year}, ${parts.hour}:${parts.minute} ${ampm} ET`;
+}
+
+// "Sept. 22" for the content-stream lines.
+function lhShortDate(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return "";
+  const parts = {};
+  new Intl.DateTimeFormat("en-US", { month: "long", day: "numeric" })
+    .formatToParts(d).forEach(p => { parts[p.type] = p.value; });
+  const month = LH_AP_MONTHS[parts.month] || parts.month;
+  return `${month} ${parts.day}`;
+}
+
+// The relay returns prose around the JSON often enough to be worth handling.
+function lhParseJson(text) {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end <= start) throw new Error("Model did not return JSON.");
+  return JSON.parse(text.slice(start, end + 1));
+}
+
+function lhStripEmoji(s) {
+  return (s || "")
+    .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]/gu, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+// ---------------------------------------------------------------------------
+// Content stream section (built in code, never by the model)
+// ---------------------------------------------------------------------------
+async function lhFetchStreamItems(player) {
+  const ent = await csResolveEntity(player); // reuses the hub's resolver untouched
+  if (!ent) return null;
+  const r = await fetch(`${CS_BASE}/data/index/${ent.kind}/${ent.slug}.json`);
+  if (!r.ok) return { name: ent.name, items: [] };
+  const data = await r.json();
+  const cutoffMs = Date.now() - LH_CS_WINDOW_HOURS * 3600 * 1000;
+  const nameLower = player.trim().toLowerCase();
+
+  let items = (data.items || []).filter(it => {
+    const ts = Date.parse(it.published_at || "");
+    if (isNaN(ts) || ts < cutoffMs) return false;
+
+    const haystack = `${it.title || ""} ${it.body_excerpt || ""}`.toLowerCase();
+    if (!haystack.includes(nameLower)) return false; // must name the player in full
+
+    // Gambling / promo / sponsored noise, matched on whole words so "better"
+    // and "sponsorship" style false positives stay out of the way.
+    const blocked = LH_CS_BLOCKLIST.some(term => {
+      const esc = term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      return new RegExp(term.includes(" ") ? esc : `\\b${esc}\\b`, "i")
+        .test(`${haystack} ${(it.url || "").toLowerCase()}`);
+    });
+    if (blocked) return false;
+
+    // Reddit: link posts to external sites only, no self-posts. The external
+    // target is what gets linked, so stash it for the renderer.
+    if (it.source === "reddit") {
+      const target = it.external_url || it.link_url || it.url || "";
+      try {
+        if (/(^|\.)reddit\.com$/i.test(new URL(target).hostname)) return false;
+      } catch { return false; }
+      it.lh_href = target;
+    }
+    return true;
+  });
+
+  const seen = new Set();
+  items = items.filter(it => {
+    const key = (it.url || "") + "|" + (it.title || it.body_excerpt || "").slice(0, 80).toLowerCase().trim();
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+  items.sort((a, b) => Date.parse(b.published_at || 0) - Date.parse(a.published_at || 0));
+  return { name: ent.name, items: items.slice(0, LH_CS_MAX_ITEMS) };
+}
+
+// Plain paragraphs only: link, then (Source, Mon. D). No styling, no avatars,
+// no author handles, no excerpts.
+function lhRenderStreamHtml(player, cs) {
+  if (!cs || !cs.items || cs.items.length < LH_CS_MIN_ITEMS) return "";
+  const lines = cs.items.map(it => {
+    const href = it.lh_href || it.url || "";
+    const raw = it.title || it.body_excerpt || "";
+    let label = lhStripEmoji(raw.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim());
+    if (!it.title) label = label.slice(0, 120);
+    if (!label || !href) return "";
+    const source = CS_SOURCE_LABELS[it.source] || it.source || "";
+    const when = lhShortDate(it.published_at);
+    const tail = [source, when].filter(Boolean).join(", ");
+    return `<p><a href="${escapeHtml(href)}">${escapeHtml(label)}</a>${tail ? ` (${escapeHtml(tail)})` : ""}</p>`;
+  }).filter(Boolean);
+  if (lines.length < LH_CS_MIN_ITEMS) return "";
+  return `<h3>Latest ${escapeHtml(player)} coverage around the web</h3>\n${lines.join("\n")}`;
+}
+
+// ---------------------------------------------------------------------------
+// Lint panel (warnings only, never blocks output)
+// ---------------------------------------------------------------------------
+function lhLint(headline, meta, bodyHtml, issues) {
+  const warnings = [];
+  const text = bodyHtml.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ");
+
+  const hitPhrases = LH_BANNED_PHRASES.filter(p => text.toLowerCase().includes(p));
+  if (hitPhrases.length) warnings.push(`Banned phrase(s) in body: ${hitPhrases.join(", ")}`);
+  if (/[—–]/.test(text)) warnings.push("Em dash (or en dash) found in body.");
+
+  const tags = new Set();
+  (bodyHtml.match(/<\s*\/?\s*([a-zA-Z][a-zA-Z0-9]*)/g) || []).forEach(m => {
+    tags.add(m.replace(/[<\/\s]/g, "").toLowerCase());
+  });
+  const badTags = [...tags].filter(t => !LH_ALLOWED_TAGS.includes(t));
+  if (badTags.length) warnings.push(`Tag(s) outside the allowed set: ${badTags.join(", ")}`);
+  if (/style\s*=/.test(bodyHtml)) warnings.push("Inline style attribute found in body.");
+
+  const figures = {};
+  (text.match(/\$\s?[\d][\d.,]*(\s?(million|billion|M|B))?/gi) || []).forEach(f => {
+    const key = f.replace(/\s+/g, " ").trim().toLowerCase();
+    figures[key] = (figures[key] || 0) + 1;
+  });
+  Object.keys(figures).filter(k => figures[k] > 2).forEach(k => {
+    warnings.push(`Dollar figure "${k}" appears ${figures[k]} times (max 2).`);
+  });
+
+  const words = text.split(/\s+/).filter(Boolean).length;
+  if (words < LH_MIN_WORDS || words > LH_MAX_WORDS) {
+    warnings.push(`Body is ${words} words (target ${LH_MIN_WORDS}-${LH_MAX_WORDS}).`);
+  }
+  if ((headline || "").length > LH_MAX_HEADLINE) {
+    warnings.push(`Headline is ${headline.length} characters (max ${LH_MAX_HEADLINE}).`);
+  }
+  if ((meta || "").length > LH_MAX_META) {
+    warnings.push(`Meta description is ${meta.length} characters (max ${LH_MAX_META}).`);
+  }
+  return { warnings, issues: Array.isArray(issues) ? issues : [] };
+}
+
+function lhRenderLint(lint) {
+  const panel = document.getElementById("lintPanel");
+  const list = document.getElementById("lintList");
+  list.innerHTML = "";
+  if (lint.warnings.length === 0) {
+    const li = document.createElement("li");
+    li.className = "clean";
+    li.textContent = "No lint warnings.";
+    list.appendChild(li);
+  } else {
+    lint.warnings.forEach(w => {
+      const li = document.createElement("li");
+      li.textContent = w;
+      list.appendChild(li);
+    });
+  }
+  lint.issues.forEach(i => {
+    const li = document.createElement("li");
+    li.className = "issue";
+    li.textContent = "Editor pass: " + i;
+    list.appendChild(li);
+  });
+  panel.classList.remove("hidden");
+}
+
+// ---------------------------------------------------------------------------
+// Generation: writer pass, then editor pass, then the code-built section
+// ---------------------------------------------------------------------------
+async function lhRelay(system, userMsg, maxTokens) {
+  const r = await fetch(RELAY_URL, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: MODEL,
+      max_tokens: maxTokens,
+      system,
+      messages: [{ role: "user", content: userMsg }],
+    }),
+  });
+  const data = await r.json();
+  return lhParseJson(extractText(data));
+}
+
+async function generateLivingHub() {
+  const genBtn = document.getElementById("genBtn");
+  genBtn.disabled = true;
+  setStatus("Living hub: writer pass…");
+  try {
+    const { tag, matched } = await getMatches();
+    if (matched.length === 0) throw new Error("No matches to generate from.");
+    const focus = document.getElementById("focus").value.trim();
+    const payload = buildPayload(matched);
+    const stamp = lhUpdatedStamp();
+
+    const context = `PLAYER: ${tag}\nSTORYLINE FOCUS: ${focus || "(none given — identify the single dominant storyline in the last 14 days)"}\nUPDATED STAMP: ${stamp}`;
+
+    const draft = await lhRelay(
+      LIVING_WRITER_PROMPT.replace("{STAMP}", stamp),
+      `${context}\n\nENTRIES:\n${payload}`,
+      5000
+    );
+
+    setStatus("Living hub: editor pass…");
+    const edited = await lhRelay(
+      LIVING_EDITOR_PROMPT,
+      `${context}\n\nDRAFT:\n${JSON.stringify({
+        headline: draft.headline || "",
+        meta_description: draft.meta_description || "",
+        body_html: draft.body_html || "",
+      })}\n\nENTRIES:\n${payload}`,
+      5000
+    );
+
+    const headline = (edited.headline || draft.headline || "").trim();
+    const meta = (edited.meta_description || draft.meta_description || "").trim();
+    let body = (edited.body_html || draft.body_html || "").trim();
+    if (!body) throw new Error("Editor pass returned no body HTML.");
+
+    // Lint the writing before the code-built section is appended.
+    const lint = lhLint(headline, meta, body, edited.issues);
+
+    let csNote = "";
+    setStatus("Living hub: fetching content stream…");
+    try {
+      const cs = await lhFetchStreamItems(tag);
+      if (cs === null) {
+        csNote = " (no Content Stream coverage for this player)";
+      } else {
+        const csHtml = lhRenderStreamHtml(tag, cs);
+        if (csHtml) {
+          body += "\n\n" + csHtml;
+          csNote = ` (+${cs.items.length} content stream links)`;
+        } else {
+          csNote = " (content stream section omitted: fewer than 2 items survived filtering)";
+        }
+      }
+    } catch (e) {
+      csNote = " (content stream fetch failed: " + e.message + ")";
+    }
+    body += "\n\n" + RUMORS_LINK;
+
+    document.getElementById("lhHeadline").value = headline;
+    document.getElementById("lhMeta").value = meta;
+    document.getElementById("lhBody").value = body;
+    document.getElementById("lhHeadlineLen").textContent = `${headline.length}/${LH_MAX_HEADLINE}`;
+    document.getElementById("lhMetaLen").textContent = `${meta.length}/${LH_MAX_META}`;
+    document.getElementById("livingOutCard").classList.remove("hidden");
+    lhRenderLint(lint);
+
+    // Feed the existing Presto output box so the existing copy/injection path
+    // works for this mode's body exactly as it does for the other modes.
+    document.getElementById("htmlOut").value = body;
+    document.getElementById("preview").innerHTML = body;
+    document.getElementById("outCard").classList.remove("hidden");
+
+    setStatus("Done." + csNote + " Copy the HTML, then use the injector on the Presto page.");
+  } catch (e) {
+    setStatus("Error: " + e.message);
+  } finally {
+    genBtn.disabled = false;
+  }
+}
+
+// Living-hub wiring. Registered after the existing listeners so the existing
+// ones run first and keep their behavior for Hub and Explainer.
+function lhCopyFrom(buttonId, fieldId, label) {
+  document.getElementById(buttonId).addEventListener("click", () => {
+    const b = document.getElementById(buttonId);
+    navigator.clipboard.writeText(document.getElementById(fieldId).value).then(() => {
+      b.textContent = "Copied";
+      setTimeout(() => (b.textContent = label), 1500);
+    });
+  });
+}
+lhCopyFrom("lhCopyHeadline", "lhHeadline", "Copy headline");
+lhCopyFrom("lhCopyMeta", "lhMeta", "Copy meta description");
+lhCopyFrom("lhCopyBody", "lhBody", "Copy body HTML");
+
+document.getElementById("mode").addEventListener("change", e => {
+  const living = e.target.value === "living";
+  document.getElementById("livingWrap").classList.toggle("hidden", !living);
+  if (living) {
+    document.getElementById("questionsWrap").classList.add("hidden");
+    document.getElementById("genBtn").textContent = "Generate living hub";
+  }
+});
 
 </script>
 </body>
