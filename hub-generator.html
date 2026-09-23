@@ -127,6 +127,24 @@
   #lintPanel li.clean { color: var(--ok); list-style: none; margin-left: -20px; }
   #lintPanel li.issue { color: var(--muted); }
   input[type="text"]#focus { min-width: 260px; }
+  /* --- Living hub v4: batch test --- */
+  .lh-note { color: var(--muted); font-size: 13px; margin-bottom: 10px; }
+  .lh-banner {
+    background: rgba(251,191,36,.12); border: 1px solid var(--warn); color: var(--warn);
+    border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px;
+  }
+  #batchTags { width: 100%; }
+  #batchTable { width: 100%; border-collapse: collapse; font-size: 13px; }
+  #batchTable th, #batchTable td {
+    border-bottom: 1px solid var(--border); padding: 7px 8px; text-align: left; vertical-align: top;
+  }
+  #batchTable th { color: var(--muted); font-size: 11px; text-transform: uppercase; letter-spacing: .04em; }
+  #batchTable tr.batch-row { cursor: pointer; }
+  #batchTable tr.batch-row:hover { background: var(--panel2); }
+  #batchTable tr.batch-detail td {
+    background: var(--panel2); white-space: pre-wrap;
+    font: 12px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--muted);
+  }
 </style>
 </head>
 <body>
@@ -187,6 +205,7 @@
       </div>
       <button class="secondary" id="countBtn">Check count</button>
       <button id="genBtn" disabled>Generate hub</button>
+      <button class="secondary hidden" id="batchBtn">Batch test</button>
     </div>
     <div class="field hidden" id="questionsWrap" style="margin-top:14px;">
       <label for="questions">Questions (one per line)</label>
@@ -196,11 +215,33 @@
         <span id="suggestMsg" style="color:var(--muted);font-size:13px;margin-left:8px;"></span>
       </div>
     </div>
+    <div class="field hidden" id="batchWrap" style="margin-top:14px;">
+      <label for="batchTags">Batch tags (one per line)</label>
+      <textarea id="batchTags" rows="4" placeholder="Leave empty to test the 8 busiest tags in this window"></textarea>
+    </div>
     <div class="count" id="countMsg"></div>
     <p class="hint">Check count first to confirm the tag spelling matches the archive and the window has enough to work with. Generate is enabled once a count returns more than zero. In Explainer mode, enter your questions above.</p>
   </div>
 
   <div id="status"></div>
+
+  <div class="card hidden" id="batchCard">
+    <div class="output-actions">
+      <button class="secondary" id="batchCopyBtn">Copy summary</button>
+    </div>
+    <table id="batchTable">
+      <thead>
+        <tr>
+          <th>Tag</th><th>Entries</th><th>Storyline</th><th>Words</th>
+          <th>Unverified claim</th><th>Unsourced</th><th>Repeat</th><th>Relative date</th>
+          <th>Platform</th><th>Editor rejected</th><th>Length</th>
+          <th>Links</th><th>Status</th>
+        </tr>
+      </thead>
+      <tbody id="batchBody"></tbody>
+    </table>
+    <p class="hint">Click a row to expand its headline, meta, body and full lint list. Copy summary copies the table only: no body text, no quotes.</p>
+  </div>
 
   <div class="card hidden" id="outCard">
     <div class="output-actions">
@@ -212,6 +253,8 @@
   </div>
 
   <div class="card hidden" id="livingOutCard">
+    <div class="lh-note hidden" id="lhStoryline"></div>
+    <div class="lh-banner hidden" id="lhThin">Thin sourcing: short format</div>
     <div class="lh-box">
       <div class="lh-head">
         <label for="lhHeadline">Headline</label>
@@ -917,14 +960,39 @@ Third person throughout. No "we", no "I", no first person of any kind. Minor ana
 - meta_description: max 155 characters, specific facts, no clickbait, no questions, absolute dates only.
 
 === CLAIM TRACE ===
-Also return "claims": one object per factual sentence in the body, in order:
-{"sentence_start": "the first 6 to 10 words of that sentence, copied exactly", "entry_index": <the INDEX of the entry that fact came from>, "source_quote": "up to 25 words copied VERBATIM from that entry's text or quote"}
-source_quote must be an exact character-for-character substring of that entry. Do not paraphrase it, do not fix its punctuation, do not stitch two passages together. Every sentence containing a number, a dollar figure or a date needs a claim entry.
+A claim object looks like this:
+{"sentence_start": "the first 6 to 10 words of the sentence, copied exactly", "entry_index": <the INDEX of the entry that fact came from>, "source_quote": "up to 25 words copied VERBATIM from that entry's text or quote"}
+source_quote must be an exact character-for-character substring of that entry. Do not paraphrase it, do not fix its punctuation, do not stitch two passages together.
+
+Return claims for all three pieces of the article:
+- "claims": one per SOURCED sentence in the body, in order.
+- "headline_claims": one or more for the headline. sentence_start is the headline itself.
+- "meta_claims": one or more for the meta description. sentence_start is the meta description itself.
+Anything asserted in the headline or the meta description has to be traceable to an entry exactly like a body sentence is.
+
+=== EVERY SENTENCE IS SOURCED OR CONTEXT ===
+Each sentence in the body is one of two things:
+- SOURCED: it carries a fact from an entry, and it gets a claim in "claims".
+- CONTEXT: it states a general NBA rule or definition (how a trade exception works, what a qualifying offer is). A context sentence names no person, no team and no figure that is not already in the entries.
+List the sentence_start of every context sentence in "context_sentences". At most 2 context sentences in the whole piece, and fewer is better. A sentence that is neither sourced nor context does not belong in the article.
+
+=== DETECTED STORYLINE ===
+Return "detected_storyline": the storyline this piece is about, in 8 words or fewer, lowercase, no punctuation at the end. When a STORYLINE FOCUS was supplied, restate it; when none was, name the dominant one you found.
 
 === OUTPUT ===
 Return ONLY a JSON object, no preamble, no code fence, no commentary:
-{"headline": "...", "meta_description": "...", "body_html": "...", "claims": [...]}
+{"headline": "...", "meta_description": "...", "body_html": "...", "detected_storyline": "...", "claims": [...], "headline_claims": [...], "meta_claims": [...], "context_sentences": [...]}
 Do not add a closing "head to HoopsHype" line or any sign-off; that is appended automatically.`;
+
+// Appended to the writer prompt when the archive has barely anything on this
+// storyline. Short format, and the lint range moves with it.
+const LIVING_SHORT_FORMAT_NOTE = `
+
+=== OVERRIDE: SHORT FORMAT ===
+The archive has very little on this storyline, so this piece runs short.
+- Structure is the lead paragraph and <h3>What we know</h3>. Do NOT write a "What comes next" section.
+- Length is 150 to 300 words, not 250 to 550. Say what the entries support and stop.
+- Everything else above still applies.`;
 
 const LIVING_EDITOR_PROMPT = `You are a HoopsHype copy editor tightening a living hub draft. You will receive a PLAYER, an optional STORYLINE FOCUS, the DRAFT as JSON, and the same archive ENTRIES the writer used.
 
@@ -949,13 +1017,13 @@ Do not claim to have verified anything. You are not a fact checker and you have 
    An ABSOLUTE date is not a relative reference. "Sept. 28", "Oct. 1", "Monday, Sept. 28" are already correct: keep them exactly as written. Deleting or changing an absolute date is an error.
 6. Anything outside the allowed tags p, a, strong, em, h3, plus any inline style, class attribute or emoji.
 
-Keep the structure: unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3>. Keep every inline source link on the sentences you keep. Do not write a timestamp or an "Updated ..." line; one is added in code.
+Keep the structure you were given, section for section: the unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3> when the draft has one. Never add a section the draft does not have. Keep every inline source link on the sentences you keep. Do not write a timestamp or an "Updated ..." line; one is added in code.
 
-=== ISSUES ===
-"issues" lists only concrete edits you actually made, one edit per item, each starting with "Removed" or "Reworded". Example: "Removed the repeated contract figure in the third paragraph." Do not report word counts, character counts, tag checks or anything you merely inspected. If you changed nothing, return an empty array.
+=== NO SELF-REPORTING ===
+Do not describe your edits. The changes are worked out in code by comparing your output with the draft, sentence by sentence, so any summary you write is ignored.
 
 Return ONLY a JSON object, no preamble, no code fence:
-{"headline": "...", "meta_description": "...", "body_html": "...", "issues": [...]}`;
+{"headline": "...", "meta_description": "...", "body_html": "..."}`;
 
 // AP-style month abbreviations: March through July are never abbreviated.
 const LH_AP_MONTHS = {
@@ -1175,15 +1243,52 @@ function lhGuardEditor(writerBody, editorBody) {
   return null;
 }
 
-// The editor is told to report edits, not inspections. Drop the inspections.
-function lhFilterIssues(issues) {
-  return (Array.isArray(issues) ? issues : []).filter(raw => {
-    const s = (raw || "").toString().trim();
-    if (!s) return false;
-    if (/^(confirmed|checked|verified)\b/i.test(s)) return false;
-    if (/within (limits|range)/i.test(s)) return false;
-    return true;
+// What the editor actually did, worked out in code. The model's own account of
+// its edits is ignored: it is not evidence, and it was wrong often enough.
+function lhWordSet(s) {
+  return new Set(lhNormalizeForCompare(s)
+    .split(/\s+/)
+    .map(w => w.replace(/^[^a-z0-9$]+|[^a-z0-9%]+$/g, "")) // trailing periods would break every match
+    .filter(w => w.length > 2));
+}
+
+// Overlap against the shorter sentence, so a sentence the editor trimmed still
+// reads as a change rather than a deletion. Two shared words minimum, or short
+// unrelated sentences would pair up on nothing.
+function lhSimilarity(a, b) {
+  const A = lhWordSet(a), B = lhWordSet(b);
+  if (!A.size || !B.size) return 0;
+  let shared = 0;
+  A.forEach(w => { if (B.has(w)) shared++; });
+  if (shared < 2) return 0;
+  return shared / Math.min(A.size, B.size);
+}
+
+// Sentence-level diff, writer draft against editor output.
+function lhEditorReport(writerBody, editorBody) {
+  const writerSents = lhSentences(writerBody);
+  const editorSents = lhSentences(editorBody);
+  const editorNorm = editorSents.map(lhNormalizeForCompare);
+  const taken = new Set();
+  const report = [];
+  writerSents.forEach(ws => {
+    const n = lhNormalizeForCompare(ws);
+    const exact = editorNorm.indexOf(n);
+    if (exact !== -1) { taken.add(exact); return; } // survived untouched
+    let best = -1, bestScore = 0;
+    editorNorm.forEach((es, i) => {
+      if (taken.has(i)) return;
+      const score = lhSimilarity(ws, editorSents[i]);
+      if (score > bestScore) { bestScore = score; best = i; }
+    });
+    if (best !== -1 && bestScore >= 0.6) {
+      taken.add(best);
+      report.push(`Changed: ${ws.slice(0, 80)}`);
+    } else {
+      report.push(`Removed: ${ws.slice(0, 80)}`);
+    }
   });
+  return report;
 }
 
 // ---------------------------------------------------------------------------
@@ -1215,25 +1320,90 @@ function lhSentences(bodyHtml) {
     .reduce((all, b) => all.concat(lhSplitSentences(b)), []);
 }
 
-function lhVerifyClaims(claims, entries, bodyHtml) {
+function lhClaimFails(claim, entries) {
+  const entry = entries[Number(claim && claim.entry_index)];
+  const quote = lhNormalizeForCompare(claim && claim.source_quote);
+  return !entry || !quote || !lhNormalizeForCompare(entry.verify).includes(quote);
+}
+
+function lhClaimLabel(claim) {
+  return ((claim && claim.sentence_start) || "(no sentence given)").toString().slice(0, 80);
+}
+
+// Body, headline and meta description are all traced the same way, and every
+// body sentence must be either sourced or declared as context.
+function lhVerifyClaims(draft, entries, bodyHtml) {
   const warnings = [];
-  const list = Array.isArray(claims) ? claims : [];
-  list.forEach(c => {
-    const label = ((c && c.sentence_start) || "(no sentence given)").toString().slice(0, 80);
-    const entry = entries[Number(c && c.entry_index)];
-    const quote = lhNormalizeForCompare(c && c.source_quote);
-    if (!entry || !quote || !lhNormalizeForCompare(entry.verify).includes(quote)) {
-      warnings.push(`Unverified claim: ${label}`);
-    }
-  });
-  const starts = list.map(c => lhNormalizeForCompare(c && c.sentence_start)).filter(Boolean);
+  const body = Array.isArray(draft.claims) ? draft.claims : [];
+  const head = Array.isArray(draft.headline_claims) ? draft.headline_claims : [];
+  const meta = Array.isArray(draft.meta_claims) ? draft.meta_claims : [];
+  const context = (Array.isArray(draft.context_sentences) ? draft.context_sentences : [])
+    .map(s => lhNormalizeForCompare(s)).filter(Boolean);
+
+  body.forEach(c => { if (lhClaimFails(c, entries)) warnings.push(`Unverified claim: ${lhClaimLabel(c)}`); });
+  head.forEach(c => { if (lhClaimFails(c, entries)) warnings.push(`Headline: unverified claim: ${lhClaimLabel(c)}`); });
+  meta.forEach(c => { if (lhClaimFails(c, entries)) warnings.push(`Meta: unverified claim: ${lhClaimLabel(c)}`); });
+  if (!head.length) warnings.push("Headline: unverified claim: no claim returned for the headline.");
+  if (!meta.length) warnings.push("Meta: unverified claim: no claim returned for the meta description.");
+
+  // Every body sentence is sourced (it has a claim) or context (declared).
+  const starts = body.map(c => lhNormalizeForCompare(c && c.sentence_start)).filter(Boolean);
+  const covers = (ns, list) => list.some(st => ns.startsWith(st) || ns.includes(st));
   lhSentences(bodyHtml).forEach(s => {
-    if (!/\d/.test(s)) return;
+    if (/^what (we know|comes next)$/i.test(s.trim())) return; // headings
     const ns = lhNormalizeForCompare(s);
-    if (!starts.some(st => ns.startsWith(st) || ns.includes(st))) {
-      warnings.push(`Sentence with a number has no claim entry: ${s.slice(0, 80)}`);
-    }
+    if (covers(ns, starts) || covers(ns, context)) return;
+    warnings.push(`Unsourced sentence: ${s.slice(0, 80)}`);
   });
+  if (context.length > 2) {
+    warnings.push(`${context.length} context sentences (max 2).`);
+  }
+  return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// Repetition check, in code: two sentences in different sections that share
+// two or more key tokens are probably the same fact told twice.
+// ---------------------------------------------------------------------------
+
+// Sections are the lead (everything before the first h3) and then one per h3.
+function lhSections(bodyHtml) {
+  const blocks = lhStripStampParas(bodyHtml).split(/(?=<h3\b)/i);
+  return blocks.map(b => ({
+    heading: (b.match(/<h3\b[^>]*>([\s\S]*?)<\/h3>/i) || [, "Lead"])[1].replace(/<[^>]*>/g, "").trim() || "Lead",
+    sentences: lhSentences(b.replace(/<h3\b[^>]*>[\s\S]*?<\/h3>/i, "")),
+  })).filter(s => s.sentences.length);
+}
+
+// Capitalized multi-word names, numbers and dollar figures, dates.
+function lhKeyTokens(sentence) {
+  const tokens = new Set();
+  [...sentence.matchAll(/\b([A-Z][A-Za-z'\u2019-]+(?: [A-Z][A-Za-z'\u2019-]+)+)/g)].forEach(m => {
+    const name = m[1].trim();
+    if (/^(What We Know|What Comes Next)$/i.test(name)) return;
+    tokens.add(name.toLowerCase());
+  });
+  (sentence.match(/\$?\d[\d.,]*%?/g) || []).forEach(t => tokens.add(t.replace(/[.,]+$/, "").toLowerCase()));
+  (sentence.match(/\b(?:Jan|Feb|Sept|Oct|Nov|Dec)\.\s*\d{1,2}\b|\b(?:March|April|May|June|July)\s+\d{1,2}\b/g) || [])
+    .forEach(d => tokens.add(d.replace(/\s+/g, " ").toLowerCase()));
+  return tokens;
+}
+
+function lhRepetitionWarnings(bodyHtml) {
+  const sections = lhSections(bodyHtml);
+  const warnings = [];
+  const flat = [];
+  sections.forEach((sec, si) => sec.sentences.forEach(s => flat.push({ si, s, keys: lhKeyTokens(s) })));
+  for (let i = 0; i < flat.length; i++) {
+    for (let j = i + 1; j < flat.length; j++) {
+      if (flat[i].si === flat[j].si) continue; // same section is the writer's business
+      let shared = 0;
+      flat[i].keys.forEach(k => { if (flat[j].keys.has(k)) shared++; });
+      if (shared >= 2) {
+        warnings.push(`Possible repeat: ${flat[i].s.slice(0, 60)} / ${flat[j].s.slice(0, 60)}`);
+      }
+    }
+  }
   return warnings;
 }
 
@@ -1294,11 +1464,78 @@ function lhPublisherName(it) {
 
 // Hashtags are stripped from what gets displayed, after the emoji pass.
 function lhCleanTitle(raw, hasTitle) {
-  let s = (raw || "").replace(/https?:\/\/\S+/g, " ");
+  let s = (raw || "").replace(/\[([^\]]+)\]\([^)]*\)/g, "$1"); // [text](url) -> text
+  s = s.replace(/https?:\/\/\S+/g, " ");
   s = lhStripEmoji(s);
   s = s.replace(/(^|\s)#[\wÀ-ɏ]+/g, " ").replace(/\s{2,}/g, " ").trim();
   s = s.replace(/\s+([.,;:!?])/g, "$1").trim();
   return hasTitle ? s : s.slice(0, 120);
+}
+
+// A usable headline says something. A three-word fragment or a label ending in
+// a colon does not.
+function lhUsableTitle(label) {
+  if (!label) return false;
+  if (label.trim().endsWith(":")) return false;
+  return label.trim().split(/\s+/).filter(Boolean).length >= 5;
+}
+
+// Destination identity, so the same article arriving through two sources is
+// recognised as one thing.
+function lhUrlKey(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    const path = u.pathname.replace(/\/+$/, "").toLowerCase();
+    return `${host}${path}`;
+  } catch { return (url || "").trim().toLowerCase(); }
+}
+
+// Every URL a post points at: the link card, the facets, and anything written
+// out in the text. Used to spot a Bluesky post sharing someone else's article.
+function lhItemLinkKeys(it) {
+  const keys = new Set();
+  const add = u => { const k = lhUrlKey(u); if (k) keys.add(k); };
+  [it.external_url, it.link_url, it.embed_url, it.card_url].forEach(u => { if (u) add(u); });
+  const facets = it.facets || it.links || [];
+  if (Array.isArray(facets)) {
+    facets.forEach(f => {
+      if (typeof f === "string") add(f);
+      else if (f && typeof f === "object") [f.uri, f.url, f.href].forEach(u => { if (u) add(u); });
+    });
+  }
+  (`${it.body_excerpt || ""} ${it.text || ""} ${it.title || ""}`.match(/https?:\/\/[^\s)\]]+/g) || [])
+    .forEach(add);
+  return keys;
+}
+
+// How an item's text is matched against the tag. Players need the full name;
+// a team also answers to its nickname; anything else matches the tag as typed.
+function lhTagMatcher(tag, ent) {
+  const needles = [tag.trim().toLowerCase()];
+  if (ent && ent.kind === "teams") {
+    const full = (ent.name || "").trim().toLowerCase();
+    if (full) {
+      needles.push(full);
+      const words = full.split(/\s+/);
+      if (words.length >= 2) {
+        needles.push(words.slice(-1).join(" "));                        // Pistons
+        if (words.length >= 3) needles.push(words.slice(-2).join(" ")); // Trail Blazers
+      }
+    }
+  } else if (ent && ent.kind === "players" && ent.name) {
+    needles.push(ent.name.trim().toLowerCase());
+  }
+  const list = [...new Set(needles.filter(Boolean))];
+  return haystack => list.some(n => haystack.includes(n));
+}
+
+// Focus keywords rank the surviving items; short and generic words are useless
+// for that, so they are dropped.
+const LH_FOCUS_STOPWORDS = new Set(["the", "and", "for", "with", "from", "that", "this", "into", "over", "after", "before", "about", "nba"]);
+function lhFocusKeywords(focus) {
+  return (focus || "").toLowerCase().split(/[^a-z0-9]+/)
+    .filter(w => w.length >= 4 && !LH_FOCUS_STOPWORDS.has(w));
 }
 
 // Who this item came from: the Bluesky handle, the YouTube channel, the
@@ -1310,21 +1547,21 @@ function lhVoiceKey(it) {
   return `${it.source || ""}|${raw.toLowerCase()}`;
 }
 
-async function lhFetchStreamItems(player) {
-  const ent = await csResolveEntity(player); // reuses the hub's resolver untouched
+async function lhFetchStreamItems(tag, focus) {
+  const ent = await csResolveEntity(tag); // reuses the hub's resolver untouched
   if (!ent) return null;
   const r = await fetch(`${CS_BASE}/data/index/${ent.kind}/${ent.slug}.json`);
   if (!r.ok) return { name: ent.name, items: [] };
   const data = await r.json();
   const cutoffMs = Date.now() - LH_CS_WINDOW_HOURS * 3600 * 1000;
-  const nameLower = player.trim().toLowerCase();
+  const matchesTagText = lhTagMatcher(tag, ent);
 
   let items = (data.items || []).filter(it => {
     const ts = Date.parse(it.published_at || "");
     if (isNaN(ts) || ts < cutoffMs) return false;
 
     const haystack = `${it.title || ""} ${it.body_excerpt || ""}`.toLowerCase();
-    if (!haystack.includes(nameLower)) return false; // must name the player in full
+    if (!matchesTagText(haystack)) return false;
 
     // Gambling / promo / sponsored noise, matched on whole words so "better"
     // and "sponsorship" style false positives stay out of the way.
@@ -1362,19 +1599,35 @@ async function lhFetchStreamItems(player) {
       it.lh_source = name;
     }
 
-    return !!it.lh_href && (it.lh_source || "").toLowerCase() !== "google news";
+    if (!it.lh_href || (it.lh_source || "").toLowerCase() === "google news") return false;
+
+    // The title has to survive cleaning and still say something.
+    it.lh_label = lhCleanTitle(it.title || it.body_excerpt || "", !!it.title);
+    return lhUsableTitle(it.lh_label);
   });
 
-  const seen = new Set();
-  items = items.filter(it => {
-    const key = (it.lh_href || "") + "|" + (it.title || it.body_excerpt || "").slice(0, 80).toLowerCase().trim();
-    if (seen.has(key)) return false;
-    seen.add(key);
-    return true;
-  });
   items.sort((a, b) => Date.parse(b.published_at || 0) - Date.parse(a.published_at || 0));
 
-  // One item per voice: an author handle, a channel, a publisher. Newest wins.
+  // A Bluesky post that just shares someone else's article loses to the article.
+  const otherDests = new Set();
+  items.forEach(it => { if (it.source !== "bluesky") otherDests.add(lhUrlKey(it.lh_href)); });
+  items = items.filter(it => {
+    if (it.source !== "bluesky") return true;
+    const keys = lhItemLinkKeys(it);
+    keys.add(lhUrlKey(it.lh_href));
+    for (const k of keys) if (k && otherDests.has(k)) return false;
+    return true;
+  });
+
+  // One item per destination, then one per voice: handle, channel, publisher.
+  const dests = new Set();
+  items = items.filter(it => {
+    const key = lhUrlKey(it.lh_href);
+    if (!key) return true;
+    if (dests.has(key)) return false;
+    dests.add(key);
+    return true;
+  });
   const voices = new Set();
   items = items.filter(it => {
     const key = lhVoiceKey(it);
@@ -1383,30 +1636,44 @@ async function lhFetchStreamItems(player) {
     voices.add(key);
     return true;
   });
+
+  // Items about the storyline come first, the rest fill the remaining slots.
+  const keywords = lhFocusKeywords(focus);
+  if (keywords.length) {
+    const onFocus = [], rest = [];
+    items.forEach(it => {
+      const hay = `${it.lh_label || ""} ${it.body_excerpt || ""}`.toLowerCase();
+      (keywords.some(k => hay.includes(k)) ? onFocus : rest).push(it);
+    });
+    items = onFocus.concat(rest);
+  }
   return { name: ent.name, items: items.slice(0, LH_CS_MAX_ITEMS) };
 }
 
 // Plain paragraphs only: link, then (Source, Mon. D). No styling, no avatars,
 // no author handles, no excerpts.
-function lhRenderStreamHtml(player, cs) {
+function lhRenderStreamHtml(tag, cs) {
   if (!cs || !cs.items || cs.items.length < LH_CS_MIN_ITEMS) return "";
   const lines = cs.items.map(it => {
-    const label = lhCleanTitle(it.title || it.body_excerpt || "", !!it.title);
+    const label = it.lh_label || lhCleanTitle(it.title || it.body_excerpt || "", !!it.title);
     const href = it.lh_href || "";
-    if (!label || !href) return "";
+    if (!lhUsableTitle(label) || !href) return "";
     const tail = [it.lh_source || "", lhShortDate(it.published_at)].filter(Boolean).join(", ");
     return `<p><a href="${escapeHtml(href)}">${escapeHtml(label)}</a>${tail ? ` (${escapeHtml(tail)})` : ""}</p>`;
   }).filter(Boolean);
   if (lines.length < LH_CS_MIN_ITEMS) return "";
-  return `<h3>Latest ${escapeHtml(player)} coverage around the web</h3>\n${lines.join("\n")}`;
+  return `<h3>Latest ${escapeHtml(tag)} coverage around the web</h3>\n${lines.join("\n")}`;
 }
+
 
 // ---------------------------------------------------------------------------
 // Lint panel (warnings only, never blocks output)
 // ---------------------------------------------------------------------------
-function lhLint(headline, meta, bodyHtml, issues, extra) {
+function lhLint(headline, meta, bodyHtml, editorReport, extra, range) {
   const warnings = (extra || []).slice();
   const text = lhStripTags(bodyHtml);
+  const minWords = (range && range.min) || LH_MIN_WORDS;
+  const maxWords = (range && range.max) || LH_MAX_WORDS;
 
   const hitPhrases = LH_BANNED_PHRASES.filter(p => text.toLowerCase().includes(p));
   if (hitPhrases.length) warnings.push(`Banned phrase(s) in body: ${hitPhrases.join(", ")}`);
@@ -1430,8 +1697,8 @@ function lhLint(headline, meta, bodyHtml, issues, extra) {
   });
 
   const words = lhStripTags(lhStripStampParas(bodyHtml)).split(/\s+/).filter(Boolean).length;
-  if (words < LH_MIN_WORDS || words > LH_MAX_WORDS) {
-    warnings.push(`Body is ${words} words (target ${LH_MIN_WORDS}-${LH_MAX_WORDS}).`);
+  if (words < minWords || words > maxWords) {
+    warnings.push(`Body is ${words} words (target ${minWords}-${maxWords}).`);
   }
   if ((headline || "").length > LH_MAX_HEADLINE) {
     warnings.push(`Headline is ${headline.length} characters (max ${LH_MAX_HEADLINE}).`);
@@ -1482,7 +1749,32 @@ function lhLint(headline, meta, bodyHtml, issues, extra) {
     warnings.push(`"${k}" appears ${perCounts[k]} times (max 2).`);
   });
 
-  return { warnings, issues: lhFilterIssues(issues) };
+  // The same fact told twice in two different sections.
+  warnings.push(...lhRepetitionWarnings(bodyHtml));
+
+  return { warnings, report: Array.isArray(editorReport) ? editorReport : [], words };
+}
+
+// Warning buckets for the batch table. Order matters: the first match wins.
+const LH_WARNING_CATEGORIES = [
+  ["unverified claim", /unverified claim/i],
+  ["unsourced sentence", /unsourced sentence|context sentences/i],
+  ["repeat", /possible repeat|appears \d+ times/i],
+  ["relative date", /relative time reference/i],
+  ["platform attribution", /attributed to a platform/i],
+  ["editor rejected", /^editor (changed|removed) a fact/i],
+  ["length", /^body is \d+ words|^headline is \d+ characters|^meta description is \d+ characters/i],
+];
+
+function lhCategorize(warnings) {
+  const counts = {};
+  LH_WARNING_CATEGORIES.forEach(([name]) => { counts[name] = 0; });
+  counts.other = 0;
+  (warnings || []).forEach(w => {
+    const hit = LH_WARNING_CATEGORIES.find(([, re]) => re.test(w));
+    counts[hit ? hit[0] : "other"]++;
+  });
+  return counts;
 }
 
 function lhRenderLint(lint) {
@@ -1501,7 +1793,7 @@ function lhRenderLint(lint) {
       list.appendChild(li);
     });
   }
-  lint.issues.forEach(i => {
+  (lint.report || []).forEach(i => {
     const li = document.createElement("li");
     li.className = "issue";
     li.textContent = "Editor pass: " + i;
@@ -1511,8 +1803,13 @@ function lhRenderLint(lint) {
 }
 
 // ---------------------------------------------------------------------------
-// Generation: writer pass, guarded editor pass, code-built stamp and section
+// Generation: writer pass, guarded editor pass, code-built stamp and section.
+// The pipeline is DOM-free so single runs and batch runs share one code path.
 // ---------------------------------------------------------------------------
+const LH_SHORT_MIN_WORDS = 150;
+const LH_SHORT_MAX_WORDS = 300;
+const LH_THIN_ENTRIES = 3; // below this the storyline is too thin for the full format
+
 async function lhRelay(system, userMsg, maxTokens) {
   const r = await fetch(RELAY_URL, {
     method: "POST",
@@ -1528,104 +1825,327 @@ async function lhRelay(system, userMsg, maxTokens) {
   return lhParseJson(extractText(data));
 }
 
+// Same filtering as getMatches, without reading the form, so batch runs can
+// ask about a tag the input box does not hold.
+async function lhMatchesForTag(tag) {
+  const hours = getWindowHours();
+  const cutoff = cutoffISO(hours);
+  const archive = await loadArchive();
+  const tagLower = tag.trim().toLowerCase();
+  const matched = archive.filter(e => (e.archive_date || "") >= cutoff && matchesTag(e, tagLower));
+  matched.sort((a, b) => {
+    const dc = (b.archive_date || "").localeCompare(a.archive_date || "");
+    return dc !== 0 ? dc : scoreRumor(b) - scoreRumor(a);
+  });
+  return matched;
+}
+
+// The busiest tags in the current window. If the archive labels tag kinds, the
+// generic ones are skipped; otherwise tags are taken as they come.
+async function lhAutoTags(limit) {
+  const cutoff = cutoffISO(getWindowHours());
+  const archive = await loadArchive();
+  const counts = new Map();
+  archive.forEach(e => {
+    if ((e.archive_date || "") < cutoff) return;
+    const kinds = Array.isArray(e.tag_types) ? e.tag_types : (Array.isArray(e.tag_kinds) ? e.tag_kinds : null);
+    (e.tags || []).forEach((t, i) => {
+      const name = (t || "").toString().trim();
+      if (!name) return;
+      if (kinds && kinds[i] && /generic|topic|other|subject/i.test(String(kinds[i]))) return;
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+  });
+  return [...counts.entries()].sort((a, b) => b[1] - a[1]).slice(0, limit).map(e => e[0]);
+}
+
+// One full run for one tag. Returns everything both renderers need and never
+// touches the DOM itself.
+async function lhRunPipeline(tag, focus, matched, onStatus) {
+  const say = onStatus || function () {};
+  const entries = lhBuildEntries(matched);
+  const result = {
+    tag, focus, entriesUsed: entries.length, storyline: focus || "", headline: "", meta: "",
+    body: "", lint: { warnings: [], report: [], words: 0 }, words: 0, links: 0,
+    thin: false, status: "ok", note: "", csNote: "",
+  };
+
+  // Nothing to write from: do not spend a relay call on it.
+  if (entries.length <= 1) {
+    result.status = "skipped";
+    result.note = "Not enough sourced material to publish";
+    return result;
+  }
+
+  const thin = entries.length < LH_THIN_ENTRIES;
+  const range = thin
+    ? { min: LH_SHORT_MIN_WORDS, max: LH_SHORT_MAX_WORDS }
+    : { min: LH_MIN_WORDS, max: LH_MAX_WORDS };
+  result.thin = thin;
+  if (thin) result.status = "short";
+
+  const payload = lhEntriesPayload(entries);
+  const context = `PLAYER: ${tag}\nSTORYLINE FOCUS: ${focus || "(none given — identify the single dominant storyline in the last 14 days)"}`;
+
+  say("writer pass");
+  const draft = await lhRelay(
+    LIVING_WRITER_PROMPT + (thin ? LIVING_SHORT_FORMAT_NOTE : ""),
+    `${context}\n\nENTRIES:\n${payload}`,
+    5000
+  );
+  const writerBody = (draft.body_html || "").trim();
+  if (!writerBody) throw new Error("Writer pass returned no body HTML.");
+  result.storyline = focus || (draft.detected_storyline || "").toString().trim();
+
+  say("editor pass");
+  const edited = await lhRelay(
+    LIVING_EDITOR_PROMPT,
+    `${context}\n\nDRAFT:\n${JSON.stringify({
+      headline: draft.headline || "",
+      meta_description: draft.meta_description || "",
+      body_html: writerBody,
+    })}\n\nENTRIES:\n${payload}`,
+    5000
+  );
+
+  // The editor may only cut. Anything numeric or hedged that it introduced
+  // means it rewrote a fact; anything it dropped entirely means it deleted one.
+  const extraWarnings = [];
+  const editorBody = (edited.body_html || "").trim();
+  const added = editorBody ? lhGuardEditor(writerBody, editorBody) : "(empty editor output)";
+  const removed = editorBody && !added ? lhGuardRemoved(writerBody, editorBody) : null;
+  let headline, meta, body, report;
+  if (added || removed) {
+    extraWarnings.push(added
+      ? `Editor changed a fact or hedge, writer draft kept: "${added}"`
+      : `Editor removed a fact: "${removed}" (writer draft kept)`);
+    headline = (draft.headline || "").trim();
+    meta = (draft.meta_description || "").trim();
+    body = writerBody;
+    report = [];
+  } else {
+    headline = (edited.headline || draft.headline || "").trim();
+    meta = (edited.meta_description || draft.meta_description || "").trim();
+    body = editorBody;
+    report = lhEditorReport(writerBody, body); // what changed, worked out in code
+  }
+
+  // Claim trace runs against whichever body survived.
+  extraWarnings.push(...lhVerifyClaims(draft, entries, body));
+
+  // How many distinct entries the piece actually leans on. Fewer than three and
+  // the sourcing is thin even when the tag itself had more entries.
+  const support = new Set((Array.isArray(draft.claims) ? draft.claims : [])
+    .map(c => Number(c && c.entry_index))
+    .filter(n => !isNaN(n) && entries[n])).size;
+  if (support > 0 && support < LH_THIN_ENTRIES && !result.thin) {
+    result.thin = true;
+    if (result.status === "ok") result.status = "short";
+    extraWarnings.push(`Storyline rests on ${support} entr${support === 1 ? "y" : "ies"}.`);
+  }
+
+  // The timestamp is code's job: strip whatever the model wrote, prepend ours.
+  body = lhApplyStamp(body, lhUpdatedStamp());
+
+  // Lint the writing before the code-built section is appended.
+  const lint = lhLint(headline, meta, body, report, extraWarnings, range);
+
+  say("fetching content stream");
+  try {
+    const cs = await lhFetchStreamItems(tag, result.storyline);
+    if (cs === null) {
+      result.csNote = " (no Content Stream coverage for this tag)";
+    } else {
+      const csHtml = lhRenderStreamHtml(tag, cs);
+      if (csHtml) {
+        body += "\n\n" + csHtml;
+        result.links = cs.items.length;
+        result.csNote = ` (+${cs.items.length} content stream links)`;
+      } else {
+        result.csNote = " (content stream section omitted: fewer than 2 items survived filtering)";
+      }
+    }
+  } catch (e) {
+    result.csNote = " (content stream fetch failed: " + e.message + ")";
+  }
+  body += "\n\n" + RUMORS_LINK;
+
+  result.headline = headline;
+  result.meta = meta;
+  result.body = body;
+  result.lint = lint;
+  result.words = lint.words;
+  return result;
+}
+
 async function generateLivingHub() {
   const genBtn = document.getElementById("genBtn");
   genBtn.disabled = true;
   setStatus("Living hub: writer pass…");
   try {
     const { tag, matched } = await getMatches();
-    if (matched.length === 0) throw new Error("No matches to generate from.");
     const focus = document.getElementById("focus").value.trim();
-    const entries = lhBuildEntries(matched);
-    const payload = lhEntriesPayload(entries);
-    const context = `PLAYER: ${tag}\nSTORYLINE FOCUS: ${focus || "(none given — identify the single dominant storyline in the last 14 days)"}`;
+    const result = await lhRunPipeline(tag, focus, matched, s => setStatus(`Living hub: ${s}…`));
 
-    const draft = await lhRelay(LIVING_WRITER_PROMPT, `${context}\n\nENTRIES:\n${payload}`, 5000);
-    const writerBody = (draft.body_html || "").trim();
-    if (!writerBody) throw new Error("Writer pass returned no body HTML.");
-
-    setStatus("Living hub: editor pass…");
-    const edited = await lhRelay(
-      LIVING_EDITOR_PROMPT,
-      `${context}\n\nDRAFT:\n${JSON.stringify({
-        headline: draft.headline || "",
-        meta_description: draft.meta_description || "",
-        body_html: writerBody,
-      })}\n\nENTRIES:\n${payload}`,
-      5000
-    );
-
-    // The editor may only cut. Anything numeric or hedged that it introduced
-    // means it rewrote a fact, so its output is thrown away.
-    const extraWarnings = [];
-    const editorBody = (edited.body_html || "").trim();
-    const added = editorBody ? lhGuardEditor(writerBody, editorBody) : "(empty editor output)";
-    const removed = editorBody && !added ? lhGuardRemoved(writerBody, editorBody) : null;
-    const offending = added || removed;
-    let headline, meta, body, issues;
-    if (offending) {
-      extraWarnings.push(added
-        ? `Editor changed a fact or hedge, writer draft kept: "${added}"`
-        : `Editor removed a fact: "${removed}" (writer draft kept)`);
-      headline = (draft.headline || "").trim();
-      meta = (draft.meta_description || "").trim();
-      body = writerBody;
-      issues = [];
-    } else {
-      headline = (edited.headline || draft.headline || "").trim();
-      meta = (edited.meta_description || draft.meta_description || "").trim();
-      body = editorBody;
-      issues = edited.issues;
+    if (result.status === "skipped") {
+      document.getElementById("livingOutCard").classList.add("hidden");
+      setStatus(`${result.note} (${result.entriesUsed} entr${result.entriesUsed === 1 ? "y" : "ies"} for "${tag}"). No relay call was made.`);
+      return;
     }
 
-    // Claim trace runs against whichever body survived.
-    extraWarnings.push(...lhVerifyClaims(draft.claims, entries, body));
+    const storylineEl = document.getElementById("lhStoryline");
+    storylineEl.textContent = result.storyline ? `Storyline: ${result.storyline}` : "";
+    storylineEl.classList.toggle("hidden", !result.storyline);
+    document.getElementById("lhThin").classList.toggle("hidden", !result.thin);
 
-    // The timestamp is code's job: strip whatever the model wrote, prepend ours.
-    body = lhApplyStamp(body, lhUpdatedStamp());
-
-    // Lint the writing before the code-built section is appended.
-    const lint = lhLint(headline, meta, body, issues, extraWarnings);
-
-    let csNote = "";
-    setStatus("Living hub: fetching content stream…");
-    try {
-      const cs = await lhFetchStreamItems(tag);
-      if (cs === null) {
-        csNote = " (no Content Stream coverage for this player)";
-      } else {
-        const csHtml = lhRenderStreamHtml(tag, cs);
-        if (csHtml) {
-          body += "\n\n" + csHtml;
-          csNote = ` (+${cs.items.length} content stream links)`;
-        } else {
-          csNote = " (content stream section omitted: fewer than 2 items survived filtering)";
-        }
-      }
-    } catch (e) {
-      csNote = " (content stream fetch failed: " + e.message + ")";
-    }
-    body += "\n\n" + RUMORS_LINK;
-
-    document.getElementById("lhHeadline").value = headline;
-    document.getElementById("lhMeta").value = meta;
-    document.getElementById("lhBody").value = body;
-    document.getElementById("lhHeadlineLen").textContent = `${headline.length}/${LH_MAX_HEADLINE}`;
-    document.getElementById("lhMetaLen").textContent = `${meta.length}/${LH_MAX_META}`;
+    document.getElementById("lhHeadline").value = result.headline;
+    document.getElementById("lhMeta").value = result.meta;
+    document.getElementById("lhBody").value = result.body;
+    document.getElementById("lhHeadlineLen").textContent = `${result.headline.length}/${LH_MAX_HEADLINE}`;
+    document.getElementById("lhMetaLen").textContent = `${result.meta.length}/${LH_MAX_META}`;
     document.getElementById("livingOutCard").classList.remove("hidden");
-    lhRenderLint(lint);
+    lhRenderLint(result.lint);
 
     // Feed the existing Presto output box so the existing copy/injection path
     // works for this mode's body exactly as it does for the other modes.
-    document.getElementById("htmlOut").value = body;
-    document.getElementById("preview").innerHTML = body;
+    document.getElementById("htmlOut").value = result.body;
+    document.getElementById("preview").innerHTML = result.body;
     document.getElementById("outCard").classList.remove("hidden");
 
-    setStatus("Done." + csNote + " Copy the HTML, then use the injector on the Presto page.");
+    setStatus("Done." + result.csNote + (result.thin ? " Thin sourcing: short format." : "")
+      + " Copy the HTML, then use the injector on the Presto page.");
   } catch (e) {
     setStatus("Error: " + e.message);
   } finally {
     genBtn.disabled = false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Batch test: the same pipeline over several tags, one after another, with a
+// summary table. Relay calls stay sequential on purpose.
+// ---------------------------------------------------------------------------
+const LH_BATCH_AUTO_TAGS = 8;
+let lhBatchResults = [];
+
+function lhBatchStatusLabel(r) {
+  if (r.status === "error") return "error";
+  if (r.status === "skipped") return "skipped";
+  const total = Object.values(lhCategorize(r.lint.warnings)).reduce((a, b) => a + b, 0);
+  const label = `${total} warning${total === 1 ? "" : "s"}`;
+  if (r.thin) return total ? `short, ${label}` : "short";
+  return total ? label : "clean";
+}
+
+function lhBatchRows() {
+  return lhBatchResults.map(r => {
+    const c = r.status === "skipped" || r.status === "error" ? {} : lhCategorize(r.lint.warnings);
+    return {
+      tag: r.tag,
+      entries: r.entriesUsed,
+      storyline: r.storyline || (r.status === "skipped" ? "" : "(none returned)"),
+      words: r.words || 0,
+      cats: c,
+      links: r.links || 0,
+      status: lhBatchStatusLabel(r),
+      note: r.note || "",
+    };
+  });
+}
+
+const LH_BATCH_CAT_ORDER = ["unverified claim", "unsourced sentence", "repeat", "relative date", "platform attribution", "editor rejected", "length"];
+
+function lhRenderBatch() {
+  const card = document.getElementById("batchCard");
+  const tbody = document.getElementById("batchBody");
+  tbody.innerHTML = "";
+  lhBatchRows().forEach((row, i) => {
+    const tr = document.createElement("tr");
+    tr.className = "batch-row";
+    const cells = [row.tag, String(row.entries), row.storyline, String(row.words)];
+    LH_BATCH_CAT_ORDER.forEach(c => cells.push(String(row.cats[c] || 0)));
+    cells.push(String(row.links), row.status);
+    cells.forEach(v => {
+      const td = document.createElement("td");
+      td.textContent = v;
+      tr.appendChild(td);
+    });
+    tbody.appendChild(tr);
+
+    const detail = document.createElement("tr");
+    detail.className = "batch-detail hidden";
+    const td = document.createElement("td");
+    td.colSpan = cells.length;
+    const r = lhBatchResults[i];
+    if (r.status === "skipped" || r.status === "error") {
+      td.textContent = r.note || "No output.";
+    } else {
+      const parts = [];
+      parts.push(`HEADLINE: ${r.headline}`);
+      parts.push(`META: ${r.meta}`);
+      parts.push("LINT:");
+      (r.lint.warnings.length ? r.lint.warnings : ["No lint warnings."]).forEach(w => parts.push(`  - ${w}`));
+      (r.lint.report || []).forEach(w => parts.push(`  - Editor pass: ${w}`));
+      parts.push("BODY:");
+      parts.push(r.body);
+      td.textContent = parts.join("\n");
+    }
+    detail.appendChild(td);
+    tbody.appendChild(detail);
+    tr.addEventListener("click", () => detail.classList.toggle("hidden"));
+  });
+  card.classList.remove("hidden");
+}
+
+// Plain text, counts only. No headline, no meta, no body, no source text, so
+// the summary can be pasted anywhere.
+function lhBatchSummaryText() {
+  const header = ["tag", "entries", "storyline", "words", ...LH_BATCH_CAT_ORDER, "links", "status"];
+  const lines = [header.join(" | ")];
+  lhBatchRows().forEach(row => {
+    lines.push([
+      row.tag, row.entries, row.storyline, row.words,
+      ...LH_BATCH_CAT_ORDER.map(c => row.cats[c] || 0),
+      row.links, row.status,
+    ].join(" | "));
+  });
+  return lines.join("\n");
+}
+
+async function runBatchTest() {
+  const btn = document.getElementById("batchBtn");
+  btn.disabled = true;
+  lhBatchResults = [];
+  try {
+    let tags = document.getElementById("batchTags").value
+      .split("\n").map(t => t.trim()).filter(Boolean);
+    if (tags.length === 0) {
+      setStatus("Batch: picking the busiest tags in this window…");
+      tags = await lhAutoTags(LH_BATCH_AUTO_TAGS);
+    }
+    if (tags.length === 0) throw new Error("No tags to test.");
+
+    for (let i = 0; i < tags.length; i++) {
+      const tag = tags[i];
+      setStatus(`Batch ${i + 1}/${tags.length}: ${tag}…`);
+      try {
+        const matched = await lhMatchesForTag(tag);
+        const r = await lhRunPipeline(tag, "", matched, s => setStatus(`Batch ${i + 1}/${tags.length}: ${tag} — ${s}…`));
+        lhBatchResults.push(r);
+      } catch (e) {
+        lhBatchResults.push({
+          tag, entriesUsed: 0, storyline: "", headline: "", meta: "", body: "",
+          lint: { warnings: [], report: [], words: 0 }, words: 0, links: 0,
+          thin: false, status: "error", note: "Error: " + e.message,
+        });
+      }
+      lhRenderBatch();
+    }
+    setStatus(`Batch done: ${lhBatchResults.length} tag${lhBatchResults.length === 1 ? "" : "s"}. Click a row to expand it.`);
+  } catch (e) {
+    setStatus("Batch error: " + e.message);
+  } finally {
+    btn.disabled = false;
   }
 }
 
@@ -1644,15 +2164,25 @@ lhCopyFrom("lhCopyHeadline", "lhHeadline", "Copy headline");
 lhCopyFrom("lhCopyMeta", "lhMeta", "Copy meta description");
 lhCopyFrom("lhCopyBody", "lhBody", "Copy body HTML");
 
+document.getElementById("batchBtn").addEventListener("click", runBatchTest);
+document.getElementById("batchCopyBtn").addEventListener("click", () => {
+  const b = document.getElementById("batchCopyBtn");
+  navigator.clipboard.writeText(lhBatchSummaryText()).then(() => {
+    b.textContent = "Copied";
+    setTimeout(() => (b.textContent = "Copy summary"), 1500);
+  });
+});
+
 document.getElementById("mode").addEventListener("change", e => {
   const living = e.target.value === "living";
   document.getElementById("livingWrap").classList.toggle("hidden", !living);
+  document.getElementById("batchWrap").classList.toggle("hidden", !living);
+  document.getElementById("batchBtn").classList.toggle("hidden", !living);
   if (living) {
     document.getElementById("questionsWrap").classList.add("hidden");
     document.getElementById("genBtn").textContent = "Generate living hub";
   }
 });
-
 </script>
 </body>
 </html>
