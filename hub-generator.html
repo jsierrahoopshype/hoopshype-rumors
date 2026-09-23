@@ -134,6 +134,8 @@
     border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px;
   }
   #batchTags, #excludeTags { width: 100%; }
+  /* --- Living hub v6: aggregator accounts --- */
+  #aggregatorAccounts { width: 100%; }
   /* --- Living hub v5: sensitive-topic override --- */
   label.lh-check {
     display: flex; align-items: center; gap: 8px; cursor: pointer;
@@ -236,6 +238,11 @@
         Override sensitive gate (I will write/edit by hand)
       </label>
     </div>
+    <div class="field hidden" id="aggregatorWrap" style="margin-top:14px;">
+      <label for="aggregatorAccounts">Aggregator accounts (never cite as source)</label>
+      <textarea id="aggregatorAccounts" rows="2"></textarea>
+      <p class="hint">Accounts that republish other people's words. Comma or newline separated, matched case-insensitively. Entries from these accounts are attributed to the speaker and the setting instead, and the account itself is never named or linked as the source.</p>
+    </div>
     <div class="count" id="countMsg"></div>
     <p class="hint">Check count first to confirm the tag spelling matches the archive and the window has enough to work with. Generate is enabled once a count returns more than zero. In Explainer mode, enter your questions above.</p>
   </div>
@@ -252,6 +259,7 @@
           <th>Tag</th><th>Entries</th><th>Storyline</th><th>Entities</th><th>Words</th>
           <th>Truncated</th><th>Unverified claim</th><th>Unsourced</th><th>Repeat</th><th>Relative date</th>
           <th>Platform</th><th>Editor rejected</th><th>Length</th>
+          <th>Self-referential</th><th>Off-storyline / source</th>
           <th>Links</th><th>Status</th>
         </tr>
       </thead>
@@ -943,7 +951,37 @@ const LH_SENSITIVE_TERMS = [
   "overdose", "gambling investigation", "betting investigation",
   "medical condition", "cancer", "mental health",
 ];
-const LH_SENSITIVE_MIN_ENTRIES = 2;
+
+// v6: the gate excludes rather than blocks. Entries that match a term are
+// dropped from the writer input and from the claim trace, and the run proceeds
+// on what is left. The tag as a whole is only withheld when what matched is too
+// big a share of it to write around, or when too little is left to write from.
+const LH_SENSITIVE_BLOCK_SHARE = 0.3;
+const LH_SENSITIVE_BLOCK_COUNT = 4;
+const LH_SENSITIVE_MIN_REMAINING = 2;
+
+// v6: accounts that republish other people's words. Prefilled into the
+// "Aggregator accounts" box; the box is what the run actually reads, so this is
+// a default, not a hard-coded rule.
+const LH_AGGREGATOR_DEFAULT = ["ohnohedidnt24", "Oh No He Didn't"];
+
+// v6: a URL whose path is exactly one of these, or a bare site root, is a
+// section index rather than a story. The attribution stays, the link does not.
+const LH_GENERIC_PATHS = ["/social/", "/rumors/", "/news/"];
+
+// v6: a claim is matched to a body sentence by token overlap across the opening
+// words, so an editor pass that tightened the sentence does not orphan it.
+const LH_CLAIM_MATCH_WORDS = 12;
+const LH_CLAIM_MATCH_MIN = 0.7;
+
+// v6: sentences that describe the sourcing instead of telling the story.
+const LH_SELF_REFERENTIAL = /\b(entries|available reports|were named|was cited|were cited|no (specific|earlier) (deadline|date))\b/i;
+
+// v6: a "What comes next" section has to rest on a date or a scheduled event.
+// A bare month name is not a date: "may" turns up in ordinary prose, so a month
+// only counts when a day number is attached to it.
+const LH_DATE_IN_TEXT = /\b(?:jan|feb|sept|oct|nov|dec)\.?\s*\d{1,2}\b|\b(?:march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b/i;
+const LH_SCHEDULED_EVENT = /\b(deadline|training camp|media day|opening night|season opener|game \d+|hearing|meeting|window|free agency|draft|summer league)\b/i;
 
 const LIVING_WRITER_PROMPT = `You are an NBA writer for HoopsHype producing a LIVING HUB: one page about one storyline, rewritten from scratch every time there is news, so it always reads as current.
 
@@ -960,7 +998,7 @@ Every name, date, number, team, dollar figure, quote and claim MUST come from th
 === STRUCTURE (exactly this, in this order) ===
 1. A lead paragraph with no heading: what is new in the latest 24-48 hours of entries. Do NOT write a timestamp, a dateline or an "Updated ..." line. One is added automatically after you finish; if you write one it will be deleted.
 2. <h3>What we know</h3> followed by <p> paragraphs: the core facts — money, terms, leverage, other teams involved.
-3. <h3>What comes next</h3> followed by <p> paragraphs: dated deadlines and upcoming events that the entries actually name.
+3. <h3>What comes next</h3> followed by <p> paragraphs: dated deadlines and upcoming events that the entries actually name. OMIT THIS SECTION ENTIRELY, heading included, unless the entries name at least one future date or one scheduled event. Never write the section in order to say that nothing is scheduled, that no date has been set or that a decision is expected at some point.
 No other headings, no other sections.
 
 === NO REPETITION ===
@@ -983,6 +1021,21 @@ The link still points at the platform URL. Only the name changes.
 - Attribute every reported fact inline, once, linking the reporter or outlet to that entry's URL: <a href="https://example.com/story">Reporter Name</a> reported...
 - Vary the form: "reported", "according to", "per". Never use the same "per X" construction in two consecutive sentences, and do not open three sentences in a row the same way.
 - Use the URL exactly as given in the entry. Never link to a URL that is not in the entries.
+
+=== NEVER DESCRIBE THE SOURCING ===
+Write about the storyline, never about the material you were given. The reader cannot see the entries and must never learn they exist.
+- Never write about entries, reports, sourcing or the gaps in them. Banned constructions include "no date was cited", "the entries do not say", "available reports", "no specific deadline was given", "were named", "was cited". If a fact is not in the entries, it is simply left out, silently.
+- Never fill length with rumors about other players or other topics. Every sentence belongs to this storyline. When the material is thin, write a shorter piece.
+- Never add a descriptor that is not in the entries: former or current team, age, position, contract history, draft position, awards. Attribution and descriptors come from the source text and nowhere else.
+
+=== AGGREGATOR ACCOUNTS ===
+An entry marked AGGREGATOR is a repost of someone else's words by an account that did not report anything. Never name that account, never credit it, never make it the clickable text of a link.
+- Attribute the statement to the person who said it and to the setting the entry gives: "Fake Player said at media day", "Fake Coach told reporters after the game".
+- Hang the link on the quote verb instead of on a name: <a href="https://example.com/post">said</a>.
+- When the entry does not say where the statement was made, attribute it to the speaker alone and still link the verb.
+
+=== GENERIC LINKS ===
+An entry whose URL line reads NO LINK points at a section index, not at a story. Write its attribution as plain text with no link at all. Never invent a URL for it and never borrow another entry's URL for it.
 
 === ABSOLUTE DATES ===
 - Convert EVERY relative time reference in the sources into an absolute date, computed from the DATE of the entry it came from. "in seven days" in an entry dated Sept. 21 becomes "Sept. 28". The same goes for "next week", "days away", "tomorrow", "this week", "Monday" and any other relative reference.
@@ -1074,6 +1127,9 @@ Do not claim to have verified anything. You are not a fact checker and you have 
 5. Any relative time reference that survived: "in seven days", "days away", "next week", "this week", "tomorrow", "tonight", "today", a weekday with no date attached. Delete the reference or the sentence. Do not compute a replacement date yourself.
    An ABSOLUTE date is not a relative reference. "Sept. 28", "Oct. 1", "Monday, Sept. 28" are already correct: keep them exactly as written. Deleting or changing an absolute date is an error.
 6. Anything outside the allowed tags p, a, strong, em, h3, plus any inline style, class attribute or emoji.
+7. Any sentence that describes the sourcing rather than the story: "no date was cited", "the entries do not say", "available reports", "were named". Delete it whole; do not rewrite it.
+8. Any sentence about a player, team or topic that is not part of this storyline. Length is never a reason to keep it.
+9. The whole "What comes next" section, heading included, when it names no date and no scheduled event. A section that only says a decision is expected eventually is padding.
 
 Keep the structure you were given, section for section: the unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3> when the draft has one. Never add a section the draft does not have. Keep every inline source link on the sentences you keep. Do not write a timestamp or an "Updated ..." line; one is added in code.
 
@@ -1185,16 +1241,30 @@ function lhParseJsonLoose(text) {
   throw new Error("Model did not return JSON.");
 }
 
+// v6: the ranges now also cover the double punctuation marks (U+203C, U+2049),
+// the trade and info marks, and the enclosed characters, so a headline written
+// with them comes out clean instead of half-stripped. Dingbats (U+2700-27BF)
+// and U+2B00-2BFF were already inside the ranges below and stay there.
 function lhStripEmoji(s) {
   return (s || "")
     .replace(/[\u{1F000}-\u{1FAFF}\u{2190}-\u{21FF}\u{2300}-\u{27BF}\u{2B00}-\u{2BFF}\u{FE0F}\u{20E3}]/gu, "")
+    .replace(/[\u{203C}\u{2049}\u{2122}\u{2139}\u{24C2}\u{3030}\u{303D}\u{3297}\u{3299}]/gu, "")
     .replace(/\s{2,}/g, " ")
     .trim();
 }
 
+// v6: a tag boundary inside a word leaves a space behind it, which is how
+// "<strong>Durant</strong>'s" became "Durant 's" and broke every claim that
+// opened on it. The gaps are closed here, once, so the claim trace, the
+// repetition check and the lint panel all read the same text.
 function lhStripTags(html) {
   return (html || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ")
-    .replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+    .replace(/&amp;/g, "&").replace(/\s+/g, " ")
+    .replace(/\s+(['\u2019](?:[a-z]{1,2}\b|\B))/g, "$1")  // Durant 's -> Durant's
+    .replace(/\s+([,.;:!?%)\]])/g, "$1")                  // word , -> word,
+    .replace(/([(\[\u201C])\s+/g, "$1")                    // ( word -> (word
+    .replace(/\s+(["\u201D])(\s|$)/g, "$1$2")              // deal " -> deal"
+    .trim();
 }
 
 // ---------------------------------------------------------------------------
@@ -1254,17 +1324,71 @@ function lhResolveReporter(entry) {
   return (entry.channel || entry.channel_name || entry.show || "").toString().trim();
 }
 
+// ---------------------------------------------------------------------------
+// v6: aggregator accounts and generic links.
+// An aggregator republishes other people's words. It is never the source: the
+// statement belongs to whoever said it, and the link hangs on the quote verb.
+// A generic URL is a section index with no story behind it, so the attribution
+// survives and the link does not.
+// ---------------------------------------------------------------------------
+function lhNormAccount(s) {
+  return (s || "").toString().toLowerCase().replace(/\u2019/g, "'").replace(/\s+/g, " ").trim();
+}
+function lhSquashAccount(s) {
+  return lhNormAccount(s).replace(/[^a-z0-9]/g, "");
+}
+
+// What the "Aggregator accounts" box holds, as a list of normalized names.
+function lhParseAggregators(raw) {
+  return [...new Set((raw || "").split(/[\n,]/).map(lhNormAccount).filter(Boolean))];
+}
+
+const LH_ACCOUNT_FIELDS = [
+  "reporter", "author", "byline", "writer", "channel", "channel_name", "show",
+  "handle", "author_handle", "account", "username", "outlet", "media",
+  "publication", "source",
+];
+
+function lhIsAggregatorEntry(entry, url, aggregators) {
+  const list = aggregators || [];
+  if (!list.length) return false;
+  const squashed = new Set();
+  LH_ACCOUNT_FIELDS.forEach(f => {
+    const v = entry && entry[f];
+    if (typeof v === "string" && v.trim()) squashed.add(lhSquashAccount(v));
+  });
+  try {
+    const host = new URL(url).hostname.replace(/^www\./, "").toLowerCase();
+    if (host) squashed.add(lhSquashAccount(host.split(".")[0]));
+  } catch { /* not a URL, nothing to add */ }
+  return list.some(a => squashed.has(lhSquashAccount(a)));
+}
+
+function lhIsGenericUrl(url) {
+  let u;
+  try { u = new URL(url); } catch { return false; }
+  const path = u.pathname.replace(/\/{2,}/g, "/");
+  if (!path || path === "/") return true; // a bare site root
+  const norm = (path.endsWith("/") ? path : `${path}/`).toLowerCase();
+  return LH_GENERIC_PATHS.includes(norm);
+}
+
 // One normalized record per archive entry, numbered for the claim trace.
-function lhBuildEntries(matched) {
+function lhBuildEntries(matched, aggregators) {
   return matched.slice(0, MAX_ENTRIES).map((e, i) => {
     const url = cleanUrl(e.source_url || "");
     const text = (e.text || "").slice(0, 450);
     const quote = e.quote || "";
+    const aggregator = lhIsAggregatorEntry(e, url, aggregators);
     return {
       idx: i,
       date: e.archive_date || "",
-      outlet: lhResolveOutlet(e, url),
-      reporter: lhResolveReporter(e),
+      // An aggregator is never the outlet or the reporter. The speaker in front
+      // of the colon on the post is who actually said it.
+      outlet: aggregator ? "" : lhResolveOutlet(e, url),
+      reporter: aggregator ? lhLeadingName(text) : lhResolveReporter(e),
+      aggregator,
+      linkable: !!url && !lhIsGenericUrl(url),
       url,
       text,
       quote,
@@ -1275,7 +1399,13 @@ function lhBuildEntries(matched) {
 
 function lhEntriesPayload(entries) {
   return entries.map(e => {
-    let block = `--- ENTRY ${e.idx}\nDATE: ${e.date} | OUTLET: ${e.outlet || "(none)"} | REPORTER: ${e.reporter || "(none)"} | URL: ${e.url}\nTEXT: ${e.text}`;
+    const who = e.aggregator
+      ? `SPEAKER: ${e.reporter || "(the person quoted in the text)"}`
+      : `OUTLET: ${e.outlet || "(none)"} | REPORTER: ${e.reporter || "(none)"}`;
+    const link = e.linkable ? `URL: ${e.url}` : "URL: NO LINK (section page, not a story)";
+    let block = `--- ENTRY ${e.idx}\nDATE: ${e.date} | ${who} | ${link}`;
+    if (e.aggregator) block += "\nAGGREGATOR: yes. Attribute to the speaker and the setting, never to the account. Link the quote verb.";
+    block += `\nTEXT: ${e.text}`;
     if (e.quote) block += `\nQUOTE: "${e.quote}"`;
     return block;
   }).join("\n");
@@ -1403,6 +1533,31 @@ function lhEditorReport(writerBody, editorBody) {
 // ---------------------------------------------------------------------------
 const LH_ABBREVS = ["Jan", "Feb", "Aug", "Sept", "Oct", "Nov", "Dec", "Mr", "Mrs", "Ms", "Dr", "St", "vs", "No", "Inc", "a\\.m", "p\\.m", "U\\.S"];
 
+// v6: a stop inside quotation marks is not a sentence end. A quoted passage
+// belongs to the sentence that opened it, however many sentences the quote
+// itself runs to, so a three-sentence quote stays one sentence here and maps to
+// one claim. The stop that sits immediately before the closing quote is the
+// real end of that sentence and is left alone.
+const LH_STOP_MASK = { ".": "\u0001", "!": "\u0002", "?": "\u0003" };
+const LH_STOP_UNMASK = /[\u0001\u0002\u0003]/g;
+const LH_UNMASK_TO = { "\u0001": ".", "\u0002": "!", "\u0003": "?" };
+
+function lhMaskQuotedStops(text) {
+  const out = (text || "").split("");
+  let open = false;
+  for (let i = 0; i < out.length; i++) {
+    const c = out[i];
+    if (c === '"') { open = !open; continue; }
+    if (c === "\u201C") { open = true; continue; }
+    if (c === "\u201D") { open = false; continue; }
+    if (!open || !LH_STOP_MASK[c]) continue;
+    const next = out[i + 1];
+    if (next === '"' || next === "\u201D") continue; // this stop closes the quote
+    out[i] = LH_STOP_MASK[c];
+  }
+  return out.join("");
+}
+
 // Split on real sentence ends only. Month abbreviations and a.m./p.m. are not
 // sentence ends, and a claim's sentence_start has to line up with a whole one.
 function lhSplitSentences(raw) {
@@ -1411,9 +1566,10 @@ function lhSplitSentences(raw) {
     text = text.replace(new RegExp(`\\b${a}\\.`, "g"), m => m.replace(/\./g, "\u0001"));
   });
   text = text.replace(/(\d)\.(\d)/g, "$1\u0001$2"); // 1.5 million
+  text = lhMaskQuotedStops(text);
   return text
-    .split(/(?<=[.!?])\s+/)
-    .map(s => s.replace(/\u0001/g, ".").trim())
+    .split(/(?<=[.!?]["\u201D]?)\s+/)
+    .map(s => s.replace(LH_STOP_UNMASK, m => LH_UNMASK_TO[m]).trim())
     .filter(Boolean);
 }
 
@@ -1436,6 +1592,71 @@ function lhClaimLabel(claim) {
   return ((claim && claim.sentence_start) || "(no sentence given)").toString().slice(0, 80);
 }
 
+// ---------------------------------------------------------------------------
+// v6: claims are mapped to the FINAL body by fuzzy match on the opening words,
+// not by an exact sentence_start. The editor pass is allowed to tighten a
+// sentence, and under the old exact match every tightened sentence came back as
+// unsourced while its claim came back as orphaned. Both were noise.
+// ---------------------------------------------------------------------------
+function lhOpeningWords(s, n) {
+  return lhNormalizeForCompare(s)
+    .split(/\s+/)
+    .map(w => w.replace(/^[^a-z0-9$]+|[^a-z0-9%]+$/g, ""))
+    .filter(Boolean)
+    .slice(0, n || LH_CLAIM_MATCH_WORDS);
+}
+
+// Share of the claim's opening words that survive in the sentence's opening.
+function lhOpeningOverlap(sentence, start) {
+  const have = lhOpeningWords(sentence);
+  const want = lhOpeningWords(start);
+  if (!have.length || !want.length) return 0;
+  const pool = have.slice();
+  let hit = 0;
+  want.forEach(w => {
+    const at = pool.indexOf(w);
+    if (at !== -1) { pool.splice(at, 1); hit++; }
+  });
+  return hit / want.length;
+}
+
+function lhClaimCovers(normalizedSentence, starts) {
+  return starts.some(st => normalizedSentence.startsWith(st)
+    || normalizedSentence.includes(st)
+    || lhOpeningOverlap(normalizedSentence, st) >= LH_CLAIM_MATCH_MIN);
+}
+
+// v6: every claim has to rest on an entry that is actually about this
+// storyline: the entry has to name one of its entities, by full name or, for a
+// team, by nickname.
+// Team nicknames are almost all plurals ("Owls", "Hornets"); the handful that
+// are not are listed. A surname is not a nickname: matching "Player" out of
+// "Fake Player" would make every entry about any other player look on-storyline.
+const LH_TEAM_SINGULARS = ["heat", "jazz", "magic", "thunder"];
+
+function lhEntityNeedles(entities) {
+  const needles = new Set();
+  (entities || []).forEach(name => {
+    const full = lhNormEntity(name);
+    if (!full) return;
+    needles.add(full);
+    const words = full.split(" ");
+    if (words.length < 2) return;
+    const last = words[words.length - 1];
+    if (/s$/.test(last) || LH_TEAM_SINGULARS.includes(last)) {
+      needles.add(last);
+      if (words.length >= 3) needles.add(words.slice(-2).join(" "));
+    }
+  });
+  return [...needles].filter(n => n.length >= 3);
+}
+
+function lhEntryOnStoryline(entry, needles) {
+  if (!needles.length) return true; // no entities returned: nothing to check against
+  const hay = lhNormEntity(`${(entry && entry.text) || ""} ${(entry && entry.quote) || ""}`);
+  return needles.some(n => hay.includes(n));
+}
+
 // Body, headline and meta description are all traced the same way, and every
 // body sentence must be either sourced or declared as context.
 function lhVerifyClaims(draft, entries, bodyHtml, truncated) {
@@ -1446,7 +1667,14 @@ function lhVerifyClaims(draft, entries, bodyHtml, truncated) {
   const context = (Array.isArray(draft.context_sentences) ? draft.context_sentences : [])
     .map(s => lhNormalizeForCompare(s)).filter(Boolean);
 
-  body.forEach(c => { if (lhClaimFails(c, entries)) warnings.push(`Unverified claim: ${lhClaimLabel(c)}`); });
+  const needles = lhEntityNeedles(lhEntityList(draft.storyline_entities));
+  body.forEach(c => {
+    if (lhClaimFails(c, entries)) warnings.push(`Unverified claim: ${lhClaimLabel(c)}`);
+    const entry = entries[Number(c && c.entry_index)];
+    if (entry && !lhEntryOnStoryline(entry, needles)) {
+      warnings.push(`Off-storyline: ${lhClaimLabel(c)}`);
+    }
+  });
   head.forEach(c => { if (lhClaimFails(c, entries)) warnings.push(`Headline: unverified claim: ${lhClaimLabel(c)}`); });
   meta.forEach(c => { if (lhClaimFails(c, entries)) warnings.push(`Meta: unverified claim: ${lhClaimLabel(c)}`); });
   if (!head.length) warnings.push("Headline: unverified claim: no claim returned for the headline.");
@@ -1460,7 +1688,7 @@ function lhVerifyClaims(draft, entries, bodyHtml, truncated) {
 
   // Every body sentence is sourced (it has a claim) or context (declared).
   const starts = body.map(c => lhNormalizeForCompare(c && c.sentence_start)).filter(Boolean);
-  const covers = (ns, list) => list.some(st => ns.startsWith(st) || ns.includes(st));
+  const covers = (ns, list) => lhClaimCovers(ns, list);
   lhSentences(bodyHtml).forEach(s => {
     if (/^what (we know|comes next)$/i.test(s.trim())) return; // headings
     const ns = lhNormalizeForCompare(s);
@@ -1547,36 +1775,58 @@ function lhSensitiveTermsIn(text) {
   });
 }
 
-function lhSensitiveScan(entries) {
-  const terms = new Set();
-  let hits = 0;
+// v6: split the matched entries into the ones the tool will write from and the
+// ones it will not. The excluded entries are dropped before the writer call, so
+// they are never sent anywhere and can never be cited by a claim. Indexes are
+// reassigned so the claim trace still points at the entry it names.
+function lhSensitiveSplit(entries) {
+  const kept = [], excluded = [], terms = new Set();
   (entries || []).forEach(e => {
     const found = lhSensitiveTermsIn(`${e.text || ""} ${e.quote || ""}`);
-    if (!found.length) return;
-    hits++;
-    found.forEach(t => terms.add(t));
+    if (found.length) {
+      excluded.push(e);
+      found.forEach(t => terms.add(t));
+    } else {
+      kept.push(e);
+    }
   });
-  return { entries: hits, terms: [...terms] };
+  return {
+    kept: kept.map((e, i) => Object.assign({}, e, { idx: i })),
+    excluded,
+    terms: [...terms],
+  };
+}
+
+// Excluding is the normal case. Blocking the whole tag is for the three cases
+// where what is left would not be a fair account of the storyline.
+function lhSensitiveDecision(entries) {
+  const split = lhSensitiveSplit(entries);
+  const total = (entries || []).length;
+  const n = split.excluded.length;
+  const share = total ? n / total : 0;
+  let block = "";
+  if (n) {
+    if (share >= LH_SENSITIVE_BLOCK_SHARE) {
+      block = `${n} of ${total} entries (${Math.round(share * 100)}%) are about sensitive matters`;
+    } else if (n >= LH_SENSITIVE_BLOCK_COUNT) {
+      block = `${n} entries are about sensitive matters`;
+    } else if (split.kept.length < LH_SENSITIVE_MIN_REMAINING) {
+      block = `only ${split.kept.length} of ${total} entries are left once sensitive ones are removed`;
+    }
+  }
+  const note = n
+    ? `${n} entr${n === 1 ? "y" : "ies"} excluded as sensitive (terms: ${split.terms.join(", ")})`
+    : "";
+  return { kept: split.kept, excluded: n, terms: split.terms, block, note, total };
 }
 
 // ---------------------------------------------------------------------------
-// v5: storyline identity. Two runs are the same storyline when they lead on the
-// same entity AND either name another entity in common or describe it with the
-// same focus words. Used to collapse two tags onto one hub in a batch.
+// v6: storyline identity, decided on the entity set alone. Used to collapse two
+// tags onto one hub in a batch.
 // ---------------------------------------------------------------------------
-const LH_STORYLINE_STOPWORDS = new Set([
-  "the", "and", "for", "with", "from", "that", "this", "into", "over", "after",
-  "before", "about", "nba", "latest", "updates", "update", "news", "their",
-]);
-
 function lhNormEntity(s) {
   return (s || "").toString().toLowerCase()
     .replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
-}
-
-function lhStorylineKeywords(s) {
-  return new Set((s || "").toString().toLowerCase().split(/[^a-z0-9]+/)
-    .filter(w => w.length >= 4 && !LH_STORYLINE_STOPWORDS.has(w)));
 }
 
 function lhEntityList(raw) {
@@ -1586,22 +1836,38 @@ function lhEntityList(raw) {
     .slice(0, LH_MAX_ENTITIES);
 }
 
-// Returns the earlier run's tag, or null.
-function lhDuplicateOf(run, priorRuns) {
-  const ents = (run.entities || []).map(lhNormEntity).filter(Boolean);
-  if (!ents.length) return null;
-  const keys = lhStorylineKeywords(run.storyline);
+// v6: two runs are the same storyline when their entity sets share two or more
+// entities, in any order and in any case. Order stopped being evidence: the
+// writer puts whoever the latest entries lead on first, so the same trade came
+// back twice as "Hornets, Hawks" and "Hawks, Hornets".
+function lhEntitySet(list) {
+  return new Set((list || []).map(lhNormEntity).filter(Boolean));
+}
+
+function lhSharedEntities(a, b) {
+  const A = lhEntitySet(a), B = lhEntitySet(b);
+  const shared = [];
+  A.forEach(e => { if (B.has(e)) shared.push(e); });
+  return shared;
+}
+
+const LH_DUPLICATE_MIN_SHARED = 2;
+
+// The earlier run this one duplicates, or null.
+function lhDuplicateRun(run, priorRuns) {
+  if (lhEntitySet(run.entities).size < LH_DUPLICATE_MIN_SHARED) return null;
   for (const prev of priorRuns || []) {
-    const pEnts = (prev.entities || []).map(lhNormEntity).filter(Boolean);
-    if (!pEnts.length || pEnts[0] !== ents[0]) continue;
-    if (ents.slice(1).some(e => pEnts.includes(e))) return prev.tag;
-    const pKeys = lhStorylineKeywords(prev.storyline);
-    let shared = 0;
-    keys.forEach(k => { if (pKeys.has(k)) shared++; });
-    if (shared >= 2) return prev.tag;
-    if (shared && shared === keys.size && shared === pKeys.size) return prev.tag;
+    if (lhSharedEntities(run.entities, prev.entities).length >= LH_DUPLICATE_MIN_SHARED) return prev;
   }
   return null;
+}
+
+// The duplicate note both directions use, so the losing row reads the same
+// whether it was the earlier run or the later one.
+function lhDuplicateNote(winnerTag, entities) {
+  const shared = (entities || []).join(", ");
+  return `Duplicate of "${winnerTag}": same storyline${shared ? ` (${shared})` : ""}. `
+    + "The row with more entries was kept. No hub produced for this tag.";
 }
 
 // ---------------------------------------------------------------------------
@@ -1671,10 +1937,17 @@ function lhCleanTitle(raw, hasTitle) {
 
 // A usable headline says something. A three-word fragment or a label ending in
 // a colon does not.
+// v6: the five-word minimum counts words, not whitespace runs. A score line or
+// a string of numbers cleared the old count without saying anything, so a token
+// only counts when it contains at least one letter.
+const LH_CS_MIN_WORDS = 5;
+function lhTitleWords(label) {
+  return (label || "").trim().split(/\s+/).filter(w => /\p{L}/u.test(w));
+}
 function lhUsableTitle(label) {
   if (!label) return false;
   if (label.trim().endsWith(":")) return false;
-  return label.trim().split(/\s+/).filter(Boolean).length >= 5;
+  return lhTitleWords(label).length >= LH_CS_MIN_WORDS;
 }
 
 // Destination identity, so the same article arriving through two sources is
@@ -1939,7 +2212,7 @@ function lhRenderStreamHtml(tag, cs) {
 // ---------------------------------------------------------------------------
 // Lint panel (warnings only, never blocks output)
 // ---------------------------------------------------------------------------
-function lhLint(headline, meta, bodyHtml, editorReport, extra, range) {
+function lhLint(headline, meta, bodyHtml, editorReport, extra, range, ctx) {
   const warnings = (extra || []).slice();
   const text = lhStripTags(bodyHtml);
   const minWords = (range && range.min) || LH_MIN_WORDS;
@@ -2019,6 +2292,34 @@ function lhLint(headline, meta, bodyHtml, editorReport, extra, range) {
     warnings.push(`"${k}" appears ${perCounts[k]} times (max 2).`);
   });
 
+  // v6: sentences about the sourcing instead of about the story.
+  lhSentences(bodyHtml).forEach(sen => {
+    if (LH_SELF_REFERENTIAL.test(sen)) warnings.push(`Self-referential sentence: ${sen.slice(0, 80)}`);
+  });
+
+  // v6: "What comes next" earns its heading on a date or a scheduled event.
+  const nextSection = lhSections(bodyHtml).find(sec => /^what comes next$/i.test(sec.heading));
+  if (nextSection) {
+    const nextText = nextSection.sentences.join(" ");
+    const dated = LH_DATE_IN_TEXT.test(nextText) || LH_SCHEDULED_EVENT.test(nextText);
+    if (!dated) {
+      warnings.push('"What comes next" names no sourced date and no scheduled event (omit the section).');
+    }
+  }
+
+  const ctxOpts = ctx || {};
+
+  // v6: an aggregator republishes; it is never the source and never appears.
+  const bodyNorm = lhNormAccount(text);
+  (ctxOpts.aggregators || []).forEach(a => {
+    const name = lhNormAccount(a);
+    if (name && bodyNorm.includes(name)) warnings.push(`Aggregator account named in body: ${a}`);
+  });
+
+  // v6: a section index is not a story, so it never carries a link.
+  const generic = [...new Set(hrefs.filter(lhIsGenericUrl))];
+  if (generic.length) warnings.push(`Generic section URL linked: ${generic.join(", ")}`);
+
   // The same fact told twice in two different sections.
   warnings.push(...lhRepetitionWarnings(bodyHtml));
 
@@ -2027,7 +2328,7 @@ function lhLint(headline, meta, bodyHtml, editorReport, extra, range) {
 
 // Warning buckets for the batch table. Order matters: the first match wins.
 const LH_WARNING_CATEGORIES = [
-  ["truncated", /^claims truncated/i],
+  ["truncated", /^claims truncated|^relay capped output/i],
   ["unverified claim", /unverified claim/i],
   ["unsourced sentence", /unsourced sentence|context sentences/i],
   ["repeat", /possible repeat|appears \d+ times/i],
@@ -2035,6 +2336,10 @@ const LH_WARNING_CATEGORIES = [
   ["platform attribution", /attributed to a platform/i],
   ["editor rejected", /^editor (changed|removed) a fact/i],
   ["length", /^body is \d+ words|^headline is \d+ characters|^meta description is \d+ characters/i],
+  ["self-referential", /^self-referential sentence|names no sourced date/i],
+  // Off-storyline claims and misattributed sourcing share one column: both are
+  // "this sentence is not resting on what it should be".
+  ["off-storyline/source", /^off-storyline:|^aggregator account named|^generic section url linked/i],
 ];
 
 function lhCategorize(warnings) {
@@ -2048,7 +2353,7 @@ function lhCategorize(warnings) {
   return counts;
 }
 
-function lhRenderLint(lint) {
+function lhRenderLint(lint, notes) {
   const panel = document.getElementById("lintPanel");
   const list = document.getElementById("lintList");
   list.innerHTML = "";
@@ -2068,6 +2373,12 @@ function lhRenderLint(lint) {
     const li = document.createElement("li");
     li.className = "issue";
     li.textContent = "Editor pass: " + i;
+    list.appendChild(li);
+  });
+  (notes || []).filter(Boolean).forEach(n => {
+    const li = document.createElement("li");
+    li.className = "issue";
+    li.textContent = n;
     list.appendChild(li);
   });
   panel.classList.remove("hidden");
@@ -2096,11 +2407,41 @@ async function lhRelay(system, userMsg, maxTokens) {
   });
   const data = await r.json();
   const parsed = lhParseJsonLoose(extractText(data));
+  // v6: the relay passes the Messages API reply through, so its stop reason and
+  // its token usage are visible here when it sends them. A missing field means
+  // the relay did not report it, never that the value was zero.
+  const usage = (data && data.usage) || {};
   return {
     json: parsed.value,
     repaired: parsed.repaired,
     stopReason: (data && data.stop_reason) || "",
+    outputTokens: typeof usage.output_tokens === "number" ? usage.output_tokens : null,
+    inputTokens: typeof usage.input_tokens === "number" ? usage.input_tokens : null,
+    maxTokens,
   };
+}
+
+// One line per relay call for the expanded batch row. Only what the relay
+// actually reported is shown.
+function lhRelayLine(label, call) {
+  if (!call) return `${label}: (no relay call)`;
+  const bits = [];
+  bits.push(`stop reason ${call.stopReason || "(not reported)"}`);
+  bits.push(`output tokens ${call.outputTokens === null ? "(not reported)" : call.outputTokens}`);
+  if (call.inputTokens !== null && call.inputTokens !== undefined) bits.push(`input tokens ${call.inputTokens}`);
+  bits.push(`max_tokens requested ${call.maxTokens}`);
+  if (call.repaired) bits.push("JSON repaired");
+  return `${label}: ${bits.join(", ")}`;
+}
+
+// The relay answering "max tokens" on a request that asked for the full writer
+// ceiling means the ceiling it applied was not the one that was asked for.
+function lhRelayCapWarning(call) {
+  if (!call || call.stopReason !== "max_tokens") return "";
+  if (call.maxTokens !== LH_WRITER_MAX_TOKENS) return "";
+  if (typeof call.outputTokens === "number" && call.outputTokens >= call.maxTokens) return "";
+  const got = call.outputTokens === null ? "not reported" : `${call.outputTokens} output tokens`;
+  return `Relay capped output below requested max_tokens (asked ${call.maxTokens}, ${got}).`;
 }
 
 // Same filtering as getMatches, without reading the form, so batch runs can
@@ -2162,12 +2503,14 @@ async function lhAutoTags(limit, exclude) {
 async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
   const say = onStatus || function () {};
   const options = opts || {};
-  const entries = lhBuildEntries(matched);
+  const aggregators = options.aggregators || [];
+  let entries = lhBuildEntries(matched, aggregators);
   const result = {
     tag, focus, entriesUsed: entries.length, storyline: focus || "", headline: "", meta: "",
     body: "", lint: { warnings: [], report: [], words: 0 }, words: 0, links: 0,
     thin: false, status: "ok", note: "", csNote: "",
-    entities: [], sensitiveTerms: [], duplicateOf: "", truncated: false,
+    entities: [], sensitiveTerms: [], sensitiveExcluded: 0, sensitiveNote: "",
+    duplicateOf: "", truncated: false, relay: {},
   };
 
   // Nothing to write from: do not spend a relay call on it.
@@ -2179,16 +2522,28 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     return result;
   }
 
-  // v5: sensitive-topic gate, before anything is sent anywhere. Terms only.
+  // v6: sensitive-topic gate. Matching entries are removed here, before the
+  // writer input is built, so they are never sent to the relay and can never be
+  // cited by a claim. The tag as a whole is only withheld on the three
+  // conditions in lhSensitiveDecision. Terms travel out of here, never text.
   if (!options.sensitiveOverride) {
-    const scan = lhSensitiveScan(entries);
+    const gate = lhSensitiveDecision(entries);
     const focusTerms = lhSensitiveTermsIn(focus);
-    if (scan.entries >= LH_SENSITIVE_MIN_ENTRIES || focusTerms.length) {
+    if (gate.block || focusTerms.length) {
       result.status = "sensitive";
-      result.sensitiveTerms = [...new Set(scan.terms.concat(focusTerms))];
-      result.note = `Sensitive: write manually. Matched terms: ${result.sensitiveTerms.join(", ")}.`
-        + ` ${scan.entries} of ${entries.length} entries matched. No relay call was made.`;
+      result.sensitiveTerms = [...new Set(gate.terms.concat(focusTerms))];
+      result.sensitiveExcluded = gate.excluded;
+      result.note = gate.block
+        ? `Sensitive: write manually. ${gate.block} (terms: ${result.sensitiveTerms.join(", ")}). No relay call was made.`
+        : `Sensitive: write manually. The storyline focus is about: ${focusTerms.join(", ")}. No relay call was made.`;
       return result;
+    }
+    if (gate.excluded) {
+      entries = gate.kept;
+      result.entriesUsed = entries.length;
+      result.sensitiveExcluded = gate.excluded;
+      result.sensitiveTerms = gate.terms;
+      result.sensitiveNote = gate.note;
     }
   }
 
@@ -2209,6 +2564,11 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     LH_WRITER_MAX_TOKENS
   );
   const draft = writerCall.json;
+  result.relay.writer = {
+    stopReason: writerCall.stopReason, outputTokens: writerCall.outputTokens,
+    inputTokens: writerCall.inputTokens, maxTokens: writerCall.maxTokens,
+    repaired: writerCall.repaired,
+  };
   const writerBody = (draft.body_html || "").trim();
   result.storyline = focus || (draft.detected_storyline || "").toString().trim();
   result.entities = lhEntityList(draft.storyline_entities);
@@ -2232,14 +2592,22 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     throw new Error("Writer pass returned no body HTML.");
   }
 
-  // v5: one hub per storyline. A run that leads on the same entity as an
-  // earlier one in this batch stops here, before the editor call.
-  const dup = lhDuplicateOf(result, options.priorRuns);
+  // v6: one hub per storyline, decided on the entity set rather than on the
+  // order the writer happened to return it in. The row with more entries is the
+  // one that survives, so an earlier, thinner run is demoted in place when this
+  // one covers the same storyline from more material.
+  const dup = lhDuplicateRun(result, options.priorRuns);
   if (dup) {
-    result.status = "duplicate";
-    result.duplicateOf = dup;
-    result.note = `Duplicate of "${dup}": same storyline (${result.entities.join(", ")}). No hub produced for this tag.`;
-    return result;
+    if (result.entriesUsed > (dup.entriesUsed || 0)) {
+      dup.status = "duplicate";
+      dup.duplicateOf = tag;
+      dup.note = lhDuplicateNote(tag, dup.entities);
+    } else {
+      result.status = "duplicate";
+      result.duplicateOf = dup.tag;
+      result.note = lhDuplicateNote(dup.tag, result.entities);
+      return result;
+    }
   }
 
   // v5: the sensitive gate again, now that the storyline itself is named.
@@ -2269,6 +2637,11 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     LH_EDITOR_MAX_TOKENS
   );
   const edited = editorCall.json;
+  result.relay.editor = {
+    stopReason: editorCall.stopReason, outputTokens: editorCall.outputTokens,
+    inputTokens: editorCall.inputTokens, maxTokens: editorCall.maxTokens,
+    repaired: editorCall.repaired,
+  };
 
   // The editor may only cut. Anything numeric or hedged that it introduced
   // means it rewrote a fact; anything it dropped entirely means it deleted one.
@@ -2294,6 +2667,8 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
 
   // Claim trace runs against whichever body survived. A truncated reply gets one
   // warning about the truncation instead of a wall of unsourced-sentence noise.
+  const capWarning = lhRelayCapWarning(writerCall);
+  if (capWarning) extraWarnings.push(capWarning);
   if (result.truncated) extraWarnings.push("Claims truncated: fact check incomplete");
   extraWarnings.push(...lhVerifyClaims(draft, entries, body, result.truncated));
 
@@ -2312,7 +2687,7 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
   body = lhApplyStamp(body, lhUpdatedStamp());
 
   // Lint the writing before the code-built section is appended.
-  const lint = lhLint(headline, meta, body, report, extraWarnings, range);
+  const lint = lhLint(headline, meta, body, report, extraWarnings, range, { aggregators, entries });
 
   say("fetching content stream");
   try {
@@ -2360,10 +2735,11 @@ async function generateLivingHub() {
     const { tag, matched } = await getMatches();
     const focus = document.getElementById("focus").value.trim();
     const sensitiveOverride = document.getElementById("lhSensitiveOverride").checked;
+    const aggregators = lhParseAggregators(document.getElementById("aggregatorAccounts").value);
     const result = await lhRunPipeline(
       tag, focus, matched,
       s => setStatus(`Living hub: ${s}…`),
-      { sensitiveOverride }
+      { sensitiveOverride, aggregators }
     );
 
     // Statuses that produce no hub show the reason in place of the output.
@@ -2387,7 +2763,7 @@ async function generateLivingHub() {
     document.getElementById("lhHeadlineLen").textContent = `${result.headline.length}/${LH_MAX_HEADLINE}`;
     document.getElementById("lhMetaLen").textContent = `${result.meta.length}/${LH_MAX_META}`;
     document.getElementById("livingOutCard").classList.remove("hidden");
-    lhRenderLint(result.lint);
+    lhRenderLint(result.lint, lhRunNotes(result));
 
     // Feed the existing Presto output box so the existing copy/injection path
     // works for this mode's body exactly as it does for the other modes.
@@ -2395,7 +2771,8 @@ async function generateLivingHub() {
     document.getElementById("preview").innerHTML = result.body;
     document.getElementById("outCard").classList.remove("hidden");
 
-    setStatus("Done." + result.csNote + (result.thin ? " Thin sourcing: short format." : "")
+    setStatus("Done." + result.csNote + (result.sensitiveNote ? ` ${result.sensitiveNote}.` : "")
+      + (result.thin ? " Thin sourcing: short format." : "")
       + " Copy the HTML, then use the injector on the Presto page.");
   } catch (e) {
     setStatus("Error: " + e.message);
@@ -2403,6 +2780,17 @@ async function generateLivingHub() {
     genBtn.disabled = false;
     document.getElementById("lhSensitiveOverride").checked = false; // one run only
   }
+}
+
+// v6: the run's own notes, separate from lint: what the sensitive gate removed
+// and what the relay reported about each call.
+function lhRunNotes(r) {
+  const notes = [];
+  if (r.sensitiveNote) notes.push(r.sensitiveNote);
+  const relay = r.relay || {};
+  if (relay.writer) notes.push(lhRelayLine("Relay, writer call", relay.writer));
+  if (relay.editor) notes.push(lhRelayLine("Relay, editor call", relay.editor));
+  return notes;
 }
 
 // ---------------------------------------------------------------------------
@@ -2419,9 +2807,10 @@ function lhBatchStatusLabel(r) {
   if (r.status === "duplicate") return `duplicate of ${r.duplicateOf}`;
   if (r.status === "truncated") return "Claims truncated: fact check incomplete";
   const total = Object.values(lhCategorize(r.lint.warnings)).reduce((a, b) => a + b, 0);
+  const excluded = r.sensitiveExcluded ? `, ${r.sensitiveExcluded} excluded as sensitive` : "";
   const label = `${total} warning${total === 1 ? "" : "s"}`;
-  if (r.thin) return total ? `short, ${label}` : "short";
-  return total ? label : "clean";
+  if (r.thin) return (total ? `short, ${label}` : "short") + excluded;
+  return (total ? label : "clean") + excluded;
 }
 
 function lhBatchRows() {
@@ -2441,7 +2830,7 @@ function lhBatchRows() {
   });
 }
 
-const LH_BATCH_CAT_ORDER = ["truncated", "unverified claim", "unsourced sentence", "repeat", "relative date", "platform attribution", "editor rejected", "length"];
+const LH_BATCH_CAT_ORDER = ["truncated", "unverified claim", "unsourced sentence", "repeat", "relative date", "platform attribution", "editor rejected", "length", "self-referential", "off-storyline/source"];
 
 // Statuses that produce no hub. Their expanded row shows the reason instead.
 const LH_NO_OUTPUT_STATUSES = new Set(["skipped", "error", "sensitive", "duplicate", "truncated"]);
@@ -2469,9 +2858,10 @@ function lhRenderBatch() {
     td.colSpan = cells.length;
     const r = lhBatchResults[i];
     if (LH_NO_OUTPUT_STATUSES.has(r.status)) {
-      td.textContent = r.note || "No output.";
+      td.textContent = [r.note || "No output.", ...lhRunNotes(r).slice(r.sensitiveNote ? 1 : 0)].join("\n");
     } else {
       const parts = [];
+      lhRunNotes(r).forEach(n => parts.push(n));
       parts.push(`HEADLINE: ${r.headline}`);
       parts.push(`META: ${r.meta}`);
       parts.push("LINT:");
@@ -2519,6 +2909,7 @@ async function runBatchTest() {
     if (tags.length === 0) throw new Error("No tags to test.");
 
     const sensitiveOverride = document.getElementById("lhSensitiveOverride").checked;
+    const aggregators = lhParseAggregators(document.getElementById("aggregatorAccounts").value);
     for (let i = 0; i < tags.length; i++) {
       const tag = tags[i];
       setStatus(`Batch ${i + 1}/${tags.length}: ${tag}…`);
@@ -2528,7 +2919,7 @@ async function runBatchTest() {
           tag, "", matched,
           s => setStatus(`Batch ${i + 1}/${tags.length}: ${tag} — ${s}…`),
           // Only rows that produced a hub can be the original of a duplicate.
-          { sensitiveOverride, priorRuns: lhBatchResults.filter(p => !LH_NO_OUTPUT_STATUSES.has(p.status)) }
+          { sensitiveOverride, aggregators, priorRuns: lhBatchResults.filter(p => !LH_NO_OUTPUT_STATUSES.has(p.status)) }
         );
         lhBatchResults.push(r);
       } catch (e) {
@@ -2537,7 +2928,8 @@ async function runBatchTest() {
           tag, entriesUsed: 0, storyline: "", headline: "", meta: "", body: "",
           lint: { warnings: [], report: [], words: 0 }, words: 0, links: 0,
           thin: false, status: "error", note: "Error: " + e.message,
-          entities: [], sensitiveTerms: [], duplicateOf: "", truncated: false,
+          entities: [], sensitiveTerms: [], sensitiveExcluded: 0, sensitiveNote: "",
+          duplicateOf: "", truncated: false, relay: {},
         });
       }
       lhRenderBatch();
@@ -2578,6 +2970,8 @@ document.getElementById("batchCopyBtn").addEventListener("click", () => {
 
 // The exclusion list is editable, so it is seeded once and then left alone.
 document.getElementById("excludeTags").value = LH_AUTOPICK_EXCLUDE_DEFAULT.join(", ");
+// v6: same for the aggregator list.
+document.getElementById("aggregatorAccounts").value = LH_AGGREGATOR_DEFAULT.join(", ");
 
 document.getElementById("mode").addEventListener("change", e => {
   const living = e.target.value === "living";
@@ -2585,6 +2979,7 @@ document.getElementById("mode").addEventListener("change", e => {
   document.getElementById("batchWrap").classList.toggle("hidden", !living);
   document.getElementById("excludeWrap").classList.toggle("hidden", !living);
   document.getElementById("sensitiveWrap").classList.toggle("hidden", !living);
+  document.getElementById("aggregatorWrap").classList.toggle("hidden", !living);
   document.getElementById("batchBtn").classList.toggle("hidden", !living);
   if (living) {
     document.getElementById("questionsWrap").classList.add("hidden");
