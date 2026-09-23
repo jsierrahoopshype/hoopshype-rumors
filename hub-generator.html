@@ -261,7 +261,7 @@
       <thead>
         <tr>
           <th>Tag</th><th>Entries</th><th>Storyline</th><th>Entities</th><th>Words</th>
-          <th>Support</th><th>Day span</th>
+          <th>State</th><th>Support</th><th>Day span</th>
           <th>Truncated</th><th>Unverified claim</th><th>Unsourced</th><th>Repeat</th><th>Relative date</th>
           <th>Platform</th><th>Editor rejected</th><th>Length</th>
           <th>Self-referential</th><th>Off-storyline / source</th>
@@ -285,6 +285,7 @@
 
   <div class="card hidden" id="livingOutCard">
     <div class="lh-note hidden" id="lhStoryline"></div>
+    <div class="lh-note hidden" id="lhState"></div>
     <div class="lh-banner hidden" id="lhThin">Thin sourcing: short format</div>
     <div class="lh-banner hidden" id="lhMinor"></div>
     <div class="lh-box">
@@ -932,7 +933,10 @@ const LH_CS_BLOCKLIST = [
 // load and reused for every entity and every row of a batch.
 const LH_CS_GLOBAL_FEED = `${CS_BASE}/data/index/feed.json`;
 let lhGlobalFeedCache = null;
-const LH_MAX_ENTITIES = 3;
+// v8: up to five. Three was too few for a multi-team trade: the fourth and
+// fifth names got dropped from the list, and then every claim resting on an
+// entry that named only one of them came back as off-storyline.
+const LH_MAX_ENTITIES = 5;
 
 // Writer JSON carries a 550-word body plus one claim per sentence, so it needs
 // far more room than the editor's cut-only reply. The relay passes max_tokens
@@ -970,7 +974,9 @@ const LH_SENSITIVE_MIN_REMAINING = 2;
 // v6: accounts that republish other people's words. Prefilled into the
 // "Aggregator accounts" box; the box is what the run actually reads, so this is
 // a default, not a hard-coded rule.
-const LH_AGGREGATOR_DEFAULT = ["ohnohedidnt24", "Oh No He Didn't"];
+// v8: shamsbot joins the prefilled list. Any handle with "bot" in it is caught
+// by lhIsBotHandle below without having to be listed here.
+const LH_AGGREGATOR_DEFAULT = ["ohnohedidnt24", "Oh No He Didn't", "shamsbot"];
 
 // v6: a URL whose path is exactly one of these, or a bare site root, is a
 // section index rather than a story. The attribution stays, the link does not.
@@ -1028,6 +1034,8 @@ The link still points at the platform URL. Only the name changes.
 - Attribute every reported fact inline, once, linking the reporter or outlet to that entry's URL: <a href="https://example.com/story">Reporter Name</a> reported...
 - Vary the form: "reported", "according to", "per". Never use the same "per X" construction in two consecutive sentences, and do not open three sentences in a row the same way.
 - Use the URL exactly as given in the entry. Never link to a URL that is not in the entries.
+- The clickable text is a person or a publication, never an address. Never write a domain, a URL or a site name like "stein.substack.com" as the anchor text of a link.
+- A Substack or any other newsletter is attributed to the person who writes it, taken from the entry's REPORTER field: "Marc Stein reported", never "stein.substack.com reported" and never "Substack reported".
 
 === NEVER DESCRIBE THE SOURCING ===
 Write about the storyline, never about the material you were given. The reader cannot see the entries and must never learn they exist.
@@ -1087,20 +1095,27 @@ Each sentence in the body is one of two things:
 - CONTEXT: it states a general NBA rule or definition (how a trade exception works, what a qualifying offer is). A context sentence names no person, no team and no figure that is not already in the entries.
 List the sentence_start of every context sentence in "context_sentences". At most 2 context sentences in the whole piece, and fewer is better. A sentence that is neither sourced nor context does not belong in the article.
 
+=== STORYLINE STATE ===
+Return "storyline_state": either "open" or "closed", and "storyline_state_reason": one line, under 20 words, saying why.
+- "open" means the storyline is UNRESOLVED and can still move: negotiations, trade talks, an undecided contract option, a holdout, an injury return with no date, a free agency decision, a coaching search.
+- "closed" means the thing has HAPPENED and nothing is left to settle: a completed trade, a signed deal, a waiver, a retirement, a finished event.
+- Judge the storyline, not the latest entry. A signed extension inside a still-running trade saga does not close the saga; a completed trade closes it even when reaction is still coming in.
+
 === DETECTED STORYLINE ===
 Return "detected_storyline": the storyline this piece is about, in 8 words or fewer, lowercase, no punctuation at the end. When a STORYLINE FOCUS was supplied, restate it; when none was, name the dominant one you found.
 
 === STORYLINE ENTITIES ===
-Return "storyline_entities": the 1 to 3 people or teams at the CENTER of this storyline, most central first, as an array of strings.
+Return "storyline_entities": the 1 to 5 people or teams at the CENTER of this storyline, most central first, as an array of strings.
 - Full names exactly as the entries write them: "Fake Player", "Example Owls", "Fake Coach". Never a nickname, never a first name alone, never a partial name.
 - People and teams only. Never a subject word like "trade", "free agency", "extension", "injury" or "the deal".
 - A name only goes in the list if it appears in the entries.
 - The first entity is the one the storyline is about. Other teams and players mentioned in passing do not belong in the list.
 - When the storyline is about a person, that person is first and the teams follow. A team only leads the list when the storyline is about the team itself.
+- Every person and every team named in the headline or in the lead paragraph belongs in this list. A three-team trade has all three teams in it, and the players it turns on as well, up to five entries.
 
 === OUTPUT ===
 Return ONLY a JSON object, no preamble, no code fence, no commentary:
-{"headline": "...", "meta_description": "...", "body_html": "...", "detected_storyline": "...", "storyline_entities": [...], "claims": [...], "headline_claims": [...], "meta_claims": [...], "context_sentences": [...]}
+{"headline": "...", "meta_description": "...", "body_html": "...", "detected_storyline": "...", "storyline_state": "open|closed", "storyline_state_reason": "...", "storyline_entities": [...], "claims": [...], "headline_claims": [...], "meta_claims": [...], "context_sentences": [...]}
 Do not add a closing "head to HoopsHype" line or any sign-off; that is appended automatically.`;
 
 // Appended to the writer prompt when the archive has barely anything on this
@@ -1351,6 +1366,24 @@ function lhParseAggregators(raw) {
   return [...new Set((raw || "").split(/[\n,]/).map(lhNormAccount).filter(Boolean))];
 }
 
+// v8: a handle with "bot" in it is an account that reposts other people's
+// reporting automatically. It is an aggregator by definition, so it does not
+// have to be named in the box to be treated as one. Only handle-shaped fields
+// are tested: a person or a show can be called anything, but a handle that
+// says bot is a bot.
+const LH_HANDLE_FIELDS = ["handle", "author_handle", "account", "username", "screen_name"];
+
+function lhIsBotHandle(name) {
+  return /bot/.test(lhSquashAccount(name));
+}
+
+function lhHasBotHandle(obj) {
+  return LH_HANDLE_FIELDS.some(f => {
+    const v = obj && obj[f];
+    return typeof v === "string" && v.trim() && lhIsBotHandle(v);
+  });
+}
+
 const LH_ACCOUNT_FIELDS = [
   "reporter", "author", "byline", "writer", "channel", "channel_name", "show",
   "handle", "author_handle", "account", "username", "outlet", "media",
@@ -1359,6 +1392,7 @@ const LH_ACCOUNT_FIELDS = [
 
 function lhIsAggregatorEntry(entry, url, aggregators) {
   const list = aggregators || [];
+  if (lhHasBotHandle(entry)) return true; // v8: a bot handle needs no list
   if (!list.length) return false;
   const squashed = new Set();
   LH_ACCOUNT_FIELDS.forEach(f => {
@@ -2143,6 +2177,27 @@ function lhFocusKeywords(focus) {
     .filter(w => w.length >= 4 && !LH_FOCUS_STOPWORDS.has(w));
 }
 
+// v8: the same rule on the links section. An aggregator account republishing
+// someone else's reporting is not a voice worth linking to, and a bot account
+// is not a voice at all, so both are dropped from the stream before anything
+// else runs. The accounts come from the same box the writer pass uses.
+const LH_ITEM_ACCOUNT_FIELDS = [
+  "handle", "author_handle", "account", "username", "screen_name",
+  "author", "channel", "channel_name", "show", "publisher", "publisher_name",
+];
+
+function lhIsAggregatorItem(it, aggregators) {
+  if (lhHasBotHandle(it)) return true;
+  const list = aggregators || [];
+  if (!list.length) return false;
+  const squashed = new Set();
+  LH_ITEM_ACCOUNT_FIELDS.forEach(f => {
+    const v = it && it[f];
+    if (typeof v === "string" && v.trim()) squashed.add(lhSquashAccount(v));
+  });
+  return list.some(a => squashed.has(lhSquashAccount(a)));
+}
+
 // Who this item came from: the Bluesky handle, the YouTube channel, the
 // publisher on a news item. Falls back to the displayed source name.
 function lhVoiceKey(it) {
@@ -2157,12 +2212,15 @@ function lhVoiceKey(it) {
 // match out to the caller is what lets several entities feed one section; the
 // surviving set for a single entity is unchanged, since both are pure
 // per-item predicates.
-function lhFilterStreamItems(rawItems, focus) {
+function lhFilterStreamItems(rawItems, focus, aggregators) {
   const cutoffMs = Date.now() - LH_CS_WINDOW_HOURS * 3600 * 1000;
 
   let items = (rawItems || []).filter(it => {
     const ts = Date.parse(it.published_at || "");
     if (isNaN(ts) || ts < cutoffMs) return false;
+
+    // v8: aggregator and bot accounts never reach the links section.
+    if (lhIsAggregatorItem(it, aggregators)) return false;
 
     const haystack = `${it.title || ""} ${it.body_excerpt || ""}`.toLowerCase();
 
@@ -2320,7 +2378,7 @@ function lhTeamOnlyAllowance(ownCount, primaryIsPerson) {
 // filters once, so dedupe and the one-per-voice rule apply across entities.
 // v7: the merge is ordered, primary entity first, and the fill rule above
 // decides how much of the rest is allowed in.
-async function lhFetchStreamForEntities(entities, focus) {
+async function lhFetchStreamForEntities(entities, focus, aggregators) {
   const order = await lhOrderEntities(entities);
   const list = order.names;
   if (!list.length) return null;
@@ -2344,11 +2402,11 @@ async function lhFetchStreamForEntities(entities, focus) {
   // crowd them out of the six slots.
   const primary = order.primary || collected[0].name;
   const split = lhSplitByPrimary(merged, primary);
-  const own = lhFilterStreamItems(split.own, focus);
+  const own = lhFilterStreamItems(split.own, focus, aggregators);
   let items = own;
   if (own.length < LH_CS_FILL_BELOW && split.other.length) {
     const allowance = lhTeamOnlyAllowance(own.length, order.primaryIsPerson);
-    const fill = lhFilterStreamItems(split.other, focus)
+    const fill = lhFilterStreamItems(split.other, focus, aggregators)
       .filter(it => !own.includes(it))
       .slice(0, Math.max(0, Math.min(allowance, LH_CS_MAX_ITEMS - own.length)));
     items = own.concat(fill);
@@ -2366,7 +2424,7 @@ async function lhFetchStreamForEntities(entities, focus) {
 }
 
 // The v4 tag path, kept as the fallback for a run that produced no entities.
-async function lhFetchStreamItems(tag, focus) {
+async function lhFetchStreamItems(tag, focus, aggregators) {
   const ent = await csResolveEntity(tag); // reuses the hub's resolver untouched
   if (!ent) return null;
   const r = await fetch(`${CS_BASE}/data/index/${ent.kind}/${ent.slug}.json`);
@@ -2375,7 +2433,7 @@ async function lhFetchStreamItems(tag, focus) {
   const matches = lhTagMatcher(tag, ent);
   const raw = (data.items || [])
     .filter(it => matches(`${it.title || ""} ${it.body_excerpt || ""}`.toLowerCase()));
-  return { name: ent.name, items: lhFilterStreamItems(raw, focus) };
+  return { name: ent.name, items: lhFilterStreamItems(raw, focus, aggregators) };
 }
 
 // Plain paragraphs only: link, then (Source, Mon. D). No styling, no avatars,
@@ -2393,6 +2451,57 @@ function lhRenderStreamHtml(tag, cs) {
   return `<h3>Latest ${escapeHtml(tag)} coverage around the web</h3>\n${lines.join("\n")}`;
 }
 
+
+// ---------------------------------------------------------------------------
+// v8: the clickable text of a link is a person or a publication, never an
+// address. "stein.substack.com reported" is a domain standing in for a byline,
+// and it reads as though the website did the reporting. This is a lint AND a
+// fix: the anchor is rewritten in place from the entry the link points at, so
+// the copy that lands in Presto is already right, and the warning says what
+// was changed rather than asking for it to be changed by hand.
+// ---------------------------------------------------------------------------
+const LH_DOMAIN_ANCHOR = /\.com\b|\.net\b|\.org\b|substack|https?:\/\/|www\./i;
+
+// The name that should be carrying the link: the reporter, else the outlet,
+// else the plain verb, which at least never reads as a website reporting.
+function lhAnchorName(entry) {
+  const reporter = (entry && entry.reporter) || "";
+  const outlet = (entry && entry.outlet) || "";
+  return reporter.trim() || outlet.trim() || "reported";
+}
+
+// Entries by the URL they carry, both exactly and by the normalized key, so a
+// link that picked up a trailing slash still finds its entry.
+function lhEntriesByUrl(entries) {
+  const byUrl = new Map();
+  (entries || []).forEach(e => {
+    if (!e || !e.url) return;
+    if (!byUrl.has(e.url)) byUrl.set(e.url, e);
+    const key = lhUrlKey(e.url);
+    if (key && !byUrl.has(key)) byUrl.set(key, e);
+  });
+  return byUrl;
+}
+
+function lhFixDomainAnchors(bodyHtml, entries) {
+  const byUrl = lhEntriesByUrl(entries);
+  const fixes = [];
+  const html = (bodyHtml || "").replace(/<a\b([^>]*)>([\s\S]*?)<\/a>/gi, (whole, attrs, inner) => {
+    const text = lhStripTags(inner).trim();
+    if (!text || !LH_DOMAIN_ANCHOR.test(text)) return whole;
+    const href = (attrs.match(/href\s*=\s*"([^"]*)"/i) || [, ""])[1];
+    const entry = byUrl.get(href) || byUrl.get(lhUrlKey(href));
+    const name = lhAnchorName(entry);
+    fixes.push({ from: text, to: name, href, matched: !!entry });
+    return `<a${attrs}>${escapeHtml(name)}</a>`;
+  });
+  return { html, fixes };
+}
+
+function lhAnchorWarnings(fixes) {
+  return (fixes || []).map(f => `Link anchor was a domain: "${f.from}" rewritten to "${f.to}"`
+    + (f.matched ? "." : " (no entry matched that URL, so the verb was used)."));
+}
 
 // ---------------------------------------------------------------------------
 // v7: meta description against body, on the qualifier in front of a date.
@@ -2575,7 +2684,7 @@ const LH_WARNING_CATEGORIES = [
   ["self-referential", /^self-referential sentence|names no sourced date/i],
   // Off-storyline claims and misattributed sourcing share one column: both are
   // "this sentence is not resting on what it should be".
-  ["off-storyline/source", /^off-storyline:|^aggregator account named|^generic section url linked/i],
+  ["off-storyline/source", /^off-storyline:|^aggregator account named|^generic section url linked|^link anchor was a domain/i],
   // v7: the meta description promising a different date than the body.
   ["meta/body date", /^meta\/body date mismatch/i],
 ];
@@ -2633,9 +2742,28 @@ function lhRenderLint(lint, notes) {
 // tag matched, because a tag can match twenty entries and the piece still rest
 // on two of them. The output is still produced and still viewable; it is the
 // status and the collapsed panel that say not to publish it as a hub.
-const LH_HUB_MIN_ENTRIES = 4;
-const LH_HUB_MIN_DAYS = 2;
+// v8: the day-span minimum is gone. It was the wrong question. A storyline
+// that broke this morning and is still unresolved is exactly what a hub is
+// for, and a storyline that ran for a week and ENDED is not a hub at all, it
+// is a news story that should be written once and left alone. So what decides
+// is whether the storyline is still open, and how many separate reports it
+// rests on. The writer says which it is and why, in one line.
+const LH_HUB_MIN_ENTRIES = 3;
 const LH_MINOR_STATUS = "Too minor for a hub";
+const LH_NEWS_STATUS = "News, not a hub";
+const LH_STATES = ["open", "closed"];
+
+// An unreadable or missing state is treated as open: a hub that should have
+// been a news item is a smaller mistake than a live storyline withheld, and
+// the entry count still has to clear the bar underneath it.
+function lhStorylineState(draft) {
+  const raw = ((draft && draft.storyline_state) || "").toString().trim().toLowerCase();
+  return LH_STATES.includes(raw) ? raw : "open";
+}
+
+function lhStateReason(draft) {
+  return ((draft && draft.storyline_state_reason) || "").toString().trim().slice(0, 200);
+}
 
 // Distinct entries cited, distinct dates among them, and the inclusive
 // calendar-day span from the earliest to the latest.
@@ -2653,17 +2781,36 @@ function lhSupportStats(draft, entries) {
   return { count: cited.length, days: days.length, span };
 }
 
-// A run with no usable claims at all is not "minor", it is truncated or broken,
-// and that is reported elsewhere. Only a run that traced its sourcing and came
-// back thin is judged here.
-function lhTooMinor(stats) {
-  return stats.count > 0 && (stats.count < LH_HUB_MIN_ENTRIES || stats.span < LH_HUB_MIN_DAYS);
+// v8: what this run should be published as. A run with no usable claims at all
+// is not judged here at all: that is truncation, and it is reported as
+// truncation. Otherwise:
+//   closed                      -> news, whatever it rests on
+//   open, 3 or more entries     -> a hub
+//   open, fewer than 3 entries  -> too minor
+// "" means the run is a hub and nothing needs saying about it.
+function lhHubVerdict(state, stats) {
+  if (!stats || stats.count === 0) return "";
+  if (state === "closed") return "news";
+  return stats.count < LH_HUB_MIN_ENTRIES ? "minor" : "";
 }
 
-function lhMinorNote(stats) {
-  return `${LH_MINOR_STATUS}: the storyline rests on ${stats.count} entr${stats.count === 1 ? "y" : "ies"} `
-    + `across ${stats.span} calendar day${stats.span === 1 ? "" : "s"} `
-    + `(a hub needs ${LH_HUB_MIN_ENTRIES} entries over ${LH_HUB_MIN_DAYS} days). The draft is below.`;
+function lhEntryCount(n) {
+  return `${n} entr${n === 1 ? "y" : "ies"}`;
+}
+
+// The banner line for a run that should not be published as a hub. The output
+// is produced either way; this is what sits on top of it, collapsed.
+function lhVerdictNote(verdict, stats, reason) {
+  if (verdict === "news") {
+    return `${LH_NEWS_STATUS}: the storyline is closed`
+      + `${reason ? ` (${reason})` : ""}. `
+      + `A hub is for a storyline that is still running. The draft is below.`;
+  }
+  if (verdict === "minor") {
+    return `${LH_MINOR_STATUS}: the storyline is open but rests on ${lhEntryCount(stats.count)} `
+      + `(a hub needs ${LH_HUB_MIN_ENTRIES}). The draft is below.`;
+  }
+  return "";
 }
 
 const LH_SHORT_MIN_WORDS = 150;
@@ -2790,6 +2937,7 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     entities: [], sensitiveTerms: [], sensitiveExcluded: 0, sensitiveNote: "",
     duplicateOf: "", truncated: false, relay: {},
     support: { count: 0, days: 0, span: 0 }, tooMinor: false, minorNote: "",
+    state: "", stateReason: "", verdict: "", anchorFixes: 0,
   };
 
   // Nothing to write from: do not spend a relay call on it.
@@ -2860,9 +3008,14 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
 
   // v7: is this storyline big enough to be a hub at all? Measured on the
   // writer's own claim trace, before the editor pass touches anything.
+  // v8: and is it still running? A closed storyline is news whatever it rests
+  // on, and an open one only has to clear the entry count.
   result.support = lhSupportStats(draft, entries);
-  result.tooMinor = lhTooMinor(result.support);
-  result.minorNote = result.tooMinor ? lhMinorNote(result.support) : "";
+  result.state = lhStorylineState(draft);
+  result.stateReason = lhStateReason(draft);
+  result.verdict = lhHubVerdict(result.state, result.support);
+  result.tooMinor = result.verdict === "minor";
+  result.minorNote = lhVerdictNote(result.verdict, result.support, result.stateReason);
 
   // v5: did the reply get cut off? Three independent signals: the relay says it
   // hit the token ceiling, the JSON had to be repaired to parse at all, or the
@@ -2956,6 +3109,14 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     report = lhEditorReport(writerBody, body); // what changed, worked out in code
   }
 
+  // v8: rewrite any anchor that is an address rather than a name, before the
+  // claim trace and the lint read the body, so everything downstream sees the
+  // copy that will actually be published.
+  const anchorFix = lhFixDomainAnchors(body, entries);
+  body = anchorFix.html;
+  extraWarnings.push(...lhAnchorWarnings(anchorFix.fixes));
+  result.anchorFixes = anchorFix.fixes.length;
+
   // Claim trace runs against whichever body survived. A truncated reply gets one
   // warning about the truncation instead of a wall of unsourced-sentence noise.
   const capWarning = lhRelayCapWarning(writerCall);
@@ -2972,10 +3133,11 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     extraWarnings.push(`Storyline rests on ${support} entr${support === 1 ? "y" : "ies"}.`);
   }
 
-  // v7: "too minor" outranks "short". Both say the sourcing is thin; this one
-  // says the piece should not be a hub at all, so it is the one on the row.
-  if (result.tooMinor && (result.status === "ok" || result.status === "short")) {
-    result.status = "minor";
+  // v8: the verdict outranks "short". "short" is about how long the piece is;
+  // this is about whether it should be a hub at all, so it is the one on the
+  // row. The output is still built and still viewable either way.
+  if (result.verdict && (result.status === "ok" || result.status === "short")) {
+    result.status = result.verdict;
   }
 
   // The timestamp is code's job: strip whatever the model wrote, prepend ours.
@@ -2987,8 +3149,8 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
   say("fetching content stream");
   try {
     const cs = result.entities.length
-      ? await lhFetchStreamForEntities(result.entities, result.storyline)
-      : await lhFetchStreamItems(tag, result.storyline);
+      ? await lhFetchStreamForEntities(result.entities, result.storyline, aggregators)
+      : await lhFetchStreamItems(tag, result.storyline, aggregators);
     if (cs === null) {
       result.csNote = result.entities.length
         ? " (no Content Stream coverage for this storyline's entities)"
@@ -3050,11 +3212,20 @@ async function generateLivingHub() {
     const storylineEl = document.getElementById("lhStoryline");
     storylineEl.textContent = result.storyline ? `Storyline: ${result.storyline}` : "";
     storylineEl.classList.toggle("hidden", !result.storyline);
+    // v8: the header says whether the storyline is still running, and why the
+    // writer thinks so. It is the single thing that decides hub or news.
+    const stateEl = document.getElementById("lhState");
+    stateEl.textContent = result.state
+      ? `Storyline state: ${result.state}${result.stateReason ? ` — ${result.stateReason}` : ""}`
+      : "";
+    stateEl.classList.toggle("hidden", !result.state);
+
     document.getElementById("lhThin").classList.toggle("hidden", !result.thin);
 
     // v7: a storyline that is not hub-worthy still produces its draft; the card
     // just opens collapsed behind the banner, and the banner opens it.
-    const minor = result.status === "minor";
+    // v8: the same panel carries the closed-storyline verdict.
+    const minor = result.status === "minor" || result.status === "news";
     const minorEl = document.getElementById("lhMinor");
     minorEl.textContent = minor ? `${result.minorNote} Click to view it.` : "";
     minorEl.classList.toggle("hidden", !minor);
@@ -3075,7 +3246,7 @@ async function generateLivingHub() {
     document.getElementById("outCard").classList.remove("hidden");
 
     setStatus("Done." + result.csNote + (result.sensitiveNote ? ` ${result.sensitiveNote}.` : "")
-      + (minor ? ` ${LH_MINOR_STATUS}: ${result.support.count} entries across ${result.support.span} days.` : "")
+      + (minor ? ` ${result.status === "news" ? LH_NEWS_STATUS : LH_MINOR_STATUS}: storyline ${result.state}, ${lhEntryCount(result.support.count)}.` : "")
       + (result.thin ? " Thin sourcing: short format." : "")
       + " Copy the HTML, then use the injector on the Presto page.");
   } catch (e) {
@@ -3116,18 +3287,34 @@ function lhBatchStatusLabel(r) {
   // hub, so the row says so and the numbers behind it sit in their own columns
   // next to it. Anything the sensitive gate removed is still reported here.
   if (r.status === "minor") return LH_MINOR_STATUS + excluded;
+  if (r.status === "news") return LH_NEWS_STATUS + excluded;
   const label = `${total} warning${total === 1 ? "" : "s"}`;
   if (r.thin) return (total ? `short, ${label}` : "short") + excluded;
   return (total ? label : "clean") + excluded;
 }
 
-// v7: "too minor for a hub" rows sort to the bottom, so the rows worth reading
-// are the ones at the top. Everything else keeps the order it ran in: the sort
-// is stable, keyed on nothing but this one status.
+// v8: the table reads top to bottom in the order the rows are worth acting on:
+// the live hubs first, then the pieces that are news rather than hubs, then the
+// ones too thin to be either, then the rows that produced nothing at all.
+// Within a band everything keeps the order it ran in: the sort is stable and
+// keyed on nothing but the status.
+const LH_BATCH_STATUS_RANK = {
+  ok: 0, short: 0,        // an open storyline with enough behind it: a hub
+  news: 1,                // closed: write it once, do not run it as a hub
+  minor: 2,               // open, but too thin to be a hub yet
+  duplicate: 3, sensitive: 3,
+  skipped: 4, truncated: 4, error: 4,
+};
+
+function lhStatusRank(status) {
+  const rank = LH_BATCH_STATUS_RANK[status];
+  return rank === undefined ? 4 : rank;
+}
+
 function lhBatchSorted() {
   return lhBatchResults
     .map((r, at) => ({ r, at }))
-    .sort((a, b) => ((a.r.status === "minor" ? 1 : 0) - (b.r.status === "minor" ? 1 : 0)) || (a.at - b.at))
+    .sort((a, b) => (lhStatusRank(a.r.status) - lhStatusRank(b.r.status)) || (a.at - b.at))
     .map(x => x.r);
 }
 
@@ -3142,6 +3329,7 @@ function lhBatchRowsFrom(list) {
       words: r.words || 0,
       support: (r.support && r.support.count) || 0,
       span: (r.support && r.support.span) || 0,
+      state: r.state || "",
       cats: c,
       links: r.links || 0,
       status: lhBatchStatusLabel(r),
@@ -3166,7 +3354,7 @@ function lhRenderBatch() {
     const tr = document.createElement("tr");
     tr.className = "batch-row";
     const cells = [row.tag, String(row.entries), row.storyline, row.entities, String(row.words),
-      String(row.support), String(row.span)];
+      row.state, String(row.support), String(row.span)];
     LH_BATCH_CAT_ORDER.forEach(c => cells.push(String(row.cats[c] || 0)));
     cells.push(String(row.links), row.status);
     cells.forEach(v => {
@@ -3206,11 +3394,11 @@ function lhRenderBatch() {
 // Plain text, counts only. No headline, no meta, no body, no source text, so
 // the summary can be pasted anywhere.
 function lhBatchSummaryText() {
-  const header = ["tag", "entries", "storyline", "entities", "words", "support", "day span", ...LH_BATCH_CAT_ORDER, "links", "status"];
+  const header = ["tag", "entries", "storyline", "entities", "words", "state", "support", "day span", ...LH_BATCH_CAT_ORDER, "links", "status"];
   const lines = [header.join(" | ")];
   lhBatchRows().forEach(row => {
     lines.push([
-      row.tag, row.entries, row.storyline, row.entities, row.words, row.support, row.span,
+      row.tag, row.entries, row.storyline, row.entities, row.words, row.state, row.support, row.span,
       ...LH_BATCH_CAT_ORDER.map(c => row.cats[c] || 0),
       row.links, row.status,
     ].join(" | "));
@@ -3256,6 +3444,7 @@ async function runBatchTest() {
           entities: [], sensitiveTerms: [], sensitiveExcluded: 0, sensitiveNote: "",
           duplicateOf: "", truncated: false, relay: {},
           support: { count: 0, days: 0, span: 0 }, tooMinor: false, minorNote: "",
+          state: "", stateReason: "", verdict: "",
         });
       }
       lhRenderBatch();

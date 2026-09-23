@@ -88,7 +88,25 @@ function v7TeamItems(n) {
   return items;
 }
 
+// --- v8: an aggregator/bot account in the content stream -------------------
+// An invented bot handle on an item that would otherwise pass every filter, so
+// a demo can show it being dropped for the handle and nothing else.
+function v8BotItems(n) {
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    items.push({
+      id: `b${i}`, source: "bluesky",
+      author: "Fake Shams Bot", author_handle: i === 0 ? "shamsbot" : `fakerumorbot${i}`,
+      published_at: "2999-01-05T18:00:00Z",
+      url: `https://bsky.example/bot/${i}`,
+      title: `Fake Player extension talks reported by an account ${i}`,
+      body_excerpt: "A repost of somebody else's reporting.",
+    });
+  }
+  return items;
+}
+
 module.exports = {
   FAKE_ARCHIVE, FAKE_MANIFEST, FAKE_CS_INDEX,
-  V7_CS_MANIFEST, v7PersonItems, v7TeamItems,
+  V7_CS_MANIFEST, v7PersonItems, v7TeamItems, v8BotItems,
 };
