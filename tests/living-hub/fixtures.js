@@ -46,4 +46,49 @@ const FAKE_CS_INDEX = {
   ],
 };
 
-module.exports = { FAKE_ARCHIVE, FAKE_MANIFEST, FAKE_CS_INDEX };
+// --- v7: content-stream fixtures for the primary-entity rule ---------------
+// One invented player, one invented team, and two index files whose items say
+// which of the two they are about. Nothing here is a real account, channel,
+// post or URL.
+const V7_CS_MANIFEST = {
+  players: [{ name: "Fake Player", slug: "fake-player" }],
+  teams: [{ name: "Example Owls", slug: "example-owls" }],
+};
+
+// n items that name Fake Player (and never the team).
+function v7PersonItems(n) {
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    items.push({
+      id: `p${i}`, source: "bluesky",
+      // A distinct handle per item: one item per voice is an existing rule.
+      author: `Fake Poster ${i}`, author_handle: `fakeposter${i}`,
+      published_at: `2999-01-0${5 - (i % 5)}T12:00:00Z`,
+      url: `https://bsky.example/person/${i}`,
+      title: `Fake Player extension talks keep moving forward ${i}`,
+      body_excerpt: "A look at where the extension talks stand.",
+    });
+  }
+  return items;
+}
+
+// n items that name the Example Owls and never Fake Player.
+function v7TeamItems(n) {
+  const items = [];
+  for (let i = 0; i < n; i++) {
+    items.push({
+      id: `t${i}`, source: "bluesky",
+      author: `Example Poster ${i}`, author_handle: `exampleposter${i}`,
+      published_at: `2999-01-0${5 - (i % 5)}T09:00:00Z`,
+      url: `https://bsky.example/team/${i}`,
+      title: `Example Owls rotation questions heading into camp ${i}`,
+      body_excerpt: "Notes on how the Owls plan to use their bench.",
+    });
+  }
+  return items;
+}
+
+module.exports = {
+  FAKE_ARCHIVE, FAKE_MANIFEST, FAKE_CS_INDEX,
+  V7_CS_MANIFEST, v7PersonItems, v7TeamItems,
+};

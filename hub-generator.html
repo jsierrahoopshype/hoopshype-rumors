@@ -134,6 +134,10 @@
     border-radius: 8px; padding: 8px 12px; font-size: 13px; margin-bottom: 12px;
   }
   #batchTags, #excludeTags { width: 100%; }
+  /* --- Living hub v7: the too-minor banner collapses the output, click to open --- */
+  #lhMinor { cursor: pointer; }
+  #livingOutCard.lh-collapsed .lh-box,
+  #livingOutCard.lh-collapsed #lintPanel { display: none; }
   /* --- Living hub v6: aggregator accounts --- */
   #aggregatorAccounts { width: 100%; }
   /* --- Living hub v5: sensitive-topic override --- */
@@ -257,9 +261,11 @@
       <thead>
         <tr>
           <th>Tag</th><th>Entries</th><th>Storyline</th><th>Entities</th><th>Words</th>
+          <th>Support</th><th>Day span</th>
           <th>Truncated</th><th>Unverified claim</th><th>Unsourced</th><th>Repeat</th><th>Relative date</th>
           <th>Platform</th><th>Editor rejected</th><th>Length</th>
           <th>Self-referential</th><th>Off-storyline / source</th>
+          <th>Meta / body date</th>
           <th>Links</th><th>Status</th>
         </tr>
       </thead>
@@ -280,6 +286,7 @@
   <div class="card hidden" id="livingOutCard">
     <div class="lh-note hidden" id="lhStoryline"></div>
     <div class="lh-banner hidden" id="lhThin">Thin sourcing: short format</div>
+    <div class="lh-banner hidden" id="lhMinor"></div>
     <div class="lh-box">
       <div class="lh-head">
         <label for="lhHeadline">Headline</label>
@@ -1089,6 +1096,7 @@ Return "storyline_entities": the 1 to 3 people or teams at the CENTER of this st
 - People and teams only. Never a subject word like "trade", "free agency", "extension", "injury" or "the deal".
 - A name only goes in the list if it appears in the entries.
 - The first entity is the one the storyline is about. Other teams and players mentioned in passing do not belong in the list.
+- When the storyline is about a person, that person is first and the teams follow. A team only leads the list when the storyline is about the team itself.
 
 === OUTPUT ===
 Return ONLY a JSON object, no preamble, no code fence, no commentary:
@@ -1415,10 +1423,23 @@ function lhEntriesPayload(entries) {
 // Fact guard: the editor pass may only cut. Anything numeric or hedged that is
 // in the editor's output but not in the writer's draft means it rewrote a fact.
 // ---------------------------------------------------------------------------
+// v7: every apostrophe- and quote-shaped character an outlet might use, not
+// just the two curly ones. A claim's source_quote is checked as a substring of
+// the entry it points at, so a right single quotation mark in the archive text
+// and a typewriter apostrophe in the claim have to compare equal, and so do a
+// non-breaking space and an ordinary one. Both sides of every claim check run
+// through here, so the normalization is symmetric by construction.
+const LH_APOSTROPHES = /[‘’‚‛ʼʹʻ´`′]/g;
+const LH_QUOTE_MARKS = /[“”„‟«»″]/g;
+
+function lhNormalizeQuotes(s) {
+  return (s || "").toString()
+    .replace(LH_APOSTROPHES, "'")
+    .replace(LH_QUOTE_MARKS, '"');
+}
+
 function lhNormalizeForCompare(s) {
-  return (s || "")
-    .replace(/[‘’]/g, "'")
-    .replace(/[“”]/g, '"')
+  return lhNormalizeQuotes(s)
     .toLowerCase()
     .replace(/\s+/g, " ")
     .trim();
@@ -1558,6 +1579,30 @@ function lhMaskQuotedStops(text) {
   return out.join("");
 }
 
+// v7: a quote that continues after an attribution clause is still one claim
+// unit. '"We are talking," Curry said. "We are close."' is a single thing the
+// writer said, so it gets one claim, and the half after the attribution is not
+// an unsourced sentence of its own. The join is deliberately narrow: the first
+// half has to END on an attribution clause (a closing quote, then a short span
+// with a quote verb in it, then the stop) and the next sentence has to OPEN on
+// a quote. Ordinary prose never looks like that.
+const LH_QUOTE_VERBS = "said|says|told|tells|added|adds|continued|continues|explained|explains|noted|notes|asked|asks|replied|replies|wrote|writes|recalled|insisted";
+const LH_ATTRIB_TAIL = new RegExp(`["\u201D][^"\u201C\u201D]{0,80}\\b(?:${LH_QUOTE_VERBS})\\b[^"\u201C\u201D.!?]*[.!?]["\u201D]?$`, "i");
+const LH_QUOTE_OPEN = /^["\u201C]/;
+
+function lhMergeQuoteRuns(sentences) {
+  const out = [];
+  sentences.forEach(s => {
+    const prev = out[out.length - 1];
+    if (prev && LH_QUOTE_OPEN.test(s) && LH_ATTRIB_TAIL.test(prev)) {
+      out[out.length - 1] = `${prev} ${s}`;
+      return;
+    }
+    out.push(s);
+  });
+  return out;
+}
+
 // Split on real sentence ends only. Month abbreviations and a.m./p.m. are not
 // sentence ends, and a claim's sentence_start has to line up with a whole one.
 function lhSplitSentences(raw) {
@@ -1567,10 +1612,10 @@ function lhSplitSentences(raw) {
   });
   text = text.replace(/(\d)\.(\d)/g, "$1\u0001$2"); // 1.5 million
   text = lhMaskQuotedStops(text);
-  return text
+  return lhMergeQuoteRuns(text
     .split(/(?<=[.!?]["\u201D]?)\s+/)
     .map(s => s.replace(LH_STOP_UNMASK, m => LH_UNMASK_TO[m]).trim())
-    .filter(Boolean);
+    .filter(Boolean));
 }
 
 // Block by block, so a heading never runs into the paragraph beneath it.
@@ -1729,6 +1774,56 @@ function lhKeyTokens(sentence) {
   return tokens;
 }
 
+// v7: the same fact told twice in different words. The key-token rule above
+// only sees a repeat when two sentences carry the same names or the same
+// figures, so a paraphrase ("the veteran guard long term" / "the veteran guard
+// long term") walked straight past it. This second rule works on what is left
+// of a sentence once the stopwords and the capitalized names are taken out: if
+// two sentences in different sections still share a four-word run of that
+// residue, they are saying the same thing twice.
+const LH_REPEAT_NGRAM = 4;
+const LH_REPEAT_STOPWORDS = new Set([
+  "the", "a", "an", "and", "or", "but", "if", "so", "than", "then", "that",
+  "this", "these", "those", "there", "here", "of", "to", "in", "on", "at",
+  "by", "for", "with", "from", "into", "onto", "over", "under", "after",
+  "before", "about", "as", "is", "are", "was", "were", "be", "been", "being",
+  "has", "have", "had", "do", "does", "did", "will", "would", "can", "could",
+  "should", "may", "might", "must", "not", "no", "it", "its", "he", "him",
+  "his", "she", "her", "hers", "they", "them", "their", "we", "us", "our",
+  "you", "your", "i", "me", "my", "who", "whom", "whose", "which", "what",
+  "when", "where", "while", "how", "all", "any", "both", "each", "more",
+  "most", "other", "some", "such", "only", "own", "same", "very", "up",
+  "down", "out", "off", "still", "also", "per", "said", "says", "according",
+]);
+
+// Lowercased content words: capitalized tokens (names, teams, places) are
+// dropped, because sharing a name is the other rule's job, and stopwords are
+// dropped because every sentence has them.
+function lhContentWords(sentence) {
+  return (sentence || "").split(/\s+/)
+    .map(w => w.replace(/^[^A-Za-z0-9$]+|[^A-Za-z0-9%]+$/g, ""))
+    .filter(Boolean)
+    .filter(w => !/^[A-Z]/.test(w))
+    .map(w => w.toLowerCase())
+    .filter(w => !LH_REPEAT_STOPWORDS.has(w));
+}
+
+function lhRepeatNgrams(sentence) {
+  const words = lhContentWords(sentence);
+  const grams = new Set();
+  for (let i = 0; i + LH_REPEAT_NGRAM <= words.length; i++) {
+    grams.add(words.slice(i, i + LH_REPEAT_NGRAM).join(" "));
+  }
+  return grams;
+}
+
+// The shared run, or "" when there is none.
+function lhSharedNgram(a, b) {
+  const A = lhRepeatNgrams(a), B = lhRepeatNgrams(b);
+  for (const g of A) if (B.has(g)) return g;
+  return "";
+}
+
 // v5: the pairs themselves, so the editor pass can be handed them. The lint
 // strings below are built from these, unchanged from v4.
 function lhRepetitionPairs(bodyHtml) {
@@ -1741,7 +1836,10 @@ function lhRepetitionPairs(bodyHtml) {
       if (flat[i].si === flat[j].si) continue; // same section is the writer's business
       let shared = 0;
       flat[i].keys.forEach(k => { if (flat[j].keys.has(k)) shared++; });
-      if (shared >= 2) pairs.push({ a: flat[i].s, b: flat[j].s });
+      if (shared >= 2) { pairs.push({ a: flat[i].s, b: flat[j].s }); continue; }
+      // v7: no shared key token, but the same four content words in a row.
+      const gram = lhSharedNgram(flat[i].s, flat[j].s);
+      if (gram) pairs.push({ a: flat[i].s, b: flat[j].s, ngram: gram });
     }
   }
   return pairs;
@@ -1749,14 +1847,15 @@ function lhRepetitionPairs(bodyHtml) {
 
 function lhRepetitionWarnings(bodyHtml) {
   return lhRepetitionPairs(bodyHtml)
-    .map(p => `Possible repeat: ${p.a.slice(0, 60)} / ${p.b.slice(0, 60)}`);
+    .map(p => `Possible repeat: ${p.a.slice(0, 60)} / ${p.b.slice(0, 60)}`
+      + (p.ngram ? ` (shared wording: "${p.ngram}")` : ""));
 }
 
 // The flagged pairs as the editor sees them. Empty string when nothing repeats,
 // so the editor's user message is byte-for-byte the v4 one in that case.
 function lhRepeatedPairsBlock(pairs) {
   if (!pairs.length) return "";
-  const lines = pairs.map((p, i) => `${i + 1}.\n   A: ${p.a}\n   B: ${p.b}`);
+  const lines = pairs.map((p, i) => `${i + 1}.${p.ngram ? ` (same wording: "${p.ngram}")` : ""}\n   A: ${p.a}\n   B: ${p.b}`);
   return `\n\nREPEATED PAIRS (each pair states the same fact twice; delete the weaker sentence or the repeating clause):\n${lines.join("\n")}`;
 }
 
@@ -1834,6 +1933,42 @@ function lhEntityList(raw) {
     .map(e => (e || "").toString().trim())
     .filter(Boolean)
     .slice(0, LH_MAX_ENTITIES);
+}
+
+// v7: the primary entity is the one the hub is about, and when the storyline
+// is about a person that is the person, not one of the teams around them. The
+// writer is asked for "most central first" and usually gets it right, but when
+// it does not the whole section underneath (heading, links, the lot) ends up
+// following a team. Resolving each entity against the Content Stream manifest
+// says which is which; a name the manifest does not carry (a coach, a GM, an
+// agent) is a person as far as this ordering is concerned, so it still sorts
+// ahead of a team. A manifest that cannot be read leaves the order alone.
+const LH_ENTITY_RANK = { players: 0, unknown: 1, teams: 2 };
+
+async function lhEntityKind(name) {
+  try {
+    const ent = await csResolveEntity(name);
+    return ent ? ent.kind : "unknown";
+  } catch (e) {
+    return "unknown"; // no manifest: nothing is known, so nothing moves
+  }
+}
+
+// { names, primary, primaryIsPerson, kinds } for an entity list, people first.
+// The sort is stable, so entities of the same kind keep the writer's order.
+async function lhOrderEntities(raw) {
+  const names = lhEntityList(raw);
+  const ranked = [];
+  for (let i = 0; i < names.length; i++) {
+    ranked.push({ name: names[i], kind: await lhEntityKind(names[i]), at: i });
+  }
+  ranked.sort((a, b) => (LH_ENTITY_RANK[a.kind] - LH_ENTITY_RANK[b.kind]) || (a.at - b.at));
+  return {
+    names: ranked.map(r => r.name),
+    primary: ranked.length ? ranked[0].name : "",
+    primaryIsPerson: ranked.length ? ranked[0].kind !== "teams" : false,
+    kinds: ranked.map(r => ({ name: r.name, kind: r.kind })),
+  };
 }
 
 // v6: two runs are the same storyline when their entity sets share two or more
@@ -2150,11 +2285,44 @@ async function lhEntityItems(entity) {
   return { name, items, viaGlobal: true };
 }
 
+// v7: does this item actually say the entity's name? An item pulled from a
+// team's feed can be about the player too, and an item pulled from the
+// player's feed can be about nothing but the team; the feed it arrived on is
+// not evidence either way, the text is.
+function lhMentionsEntity(it, name) {
+  const needle = (name || "").toString().trim().toLowerCase();
+  if (!needle) return false;
+  return `${(it && it.title) || ""} ${(it && it.body_excerpt) || ""}`.toLowerCase().includes(needle);
+}
+
+// v7: the links follow the primary entity. Items that name it come first and
+// on their own; the other entities are only drawn on when the primary has
+// fewer than two items of its own to show. Even then, when the primary is a
+// person, team-only items can never be more than half of what is rendered, so
+// a hub about a player never turns into a page of team links with the player's
+// name over the top of it.
+const LH_CS_FILL_BELOW = 2;
+
+function lhSplitByPrimary(items, primary) {
+  const own = [], other = [];
+  (items || []).forEach(it => (lhMentionsEntity(it, primary) ? own : other).push(it));
+  return { own, other };
+}
+
+// How many team-only items may ride along with `ownCount` primary items.
+function lhTeamOnlyAllowance(ownCount, primaryIsPerson) {
+  if (!primaryIsPerson) return LH_CS_MAX_ITEMS;
+  return ownCount; // t <= floor((own + t) / 2)  =>  t <= own
+}
+
 // v5: the section is built from the storyline's entities, not from the tag.
 // Every entity's items are merged, then the whole merged set goes through the
 // filters once, so dedupe and the one-per-voice rule apply across entities.
+// v7: the merge is ordered, primary entity first, and the fill rule above
+// decides how much of the rest is allowed in.
 async function lhFetchStreamForEntities(entities, focus) {
-  const list = lhEntityList(entities);
+  const order = await lhOrderEntities(entities);
+  const list = order.names;
   if (!list.length) return null;
   const collected = [];
   for (const name of list) {
@@ -2172,11 +2340,28 @@ async function lhFetchStreamForEntities(entities, focus) {
     merged.push(it);
   }));
 
+  // The primary entity's own items, filtered on their own so nothing else can
+  // crowd them out of the six slots.
+  const primary = order.primary || collected[0].name;
+  const split = lhSplitByPrimary(merged, primary);
+  const own = lhFilterStreamItems(split.own, focus);
+  let items = own;
+  if (own.length < LH_CS_FILL_BELOW && split.other.length) {
+    const allowance = lhTeamOnlyAllowance(own.length, order.primaryIsPerson);
+    const fill = lhFilterStreamItems(split.other, focus)
+      .filter(it => !own.includes(it))
+      .slice(0, Math.max(0, Math.min(allowance, LH_CS_MAX_ITEMS - own.length)));
+    items = own.concat(fill);
+  }
+
   return {
-    name: collected[0].name, // the heading names the first entity
+    name: primary, // the heading names the primary entity
     entities: list,
+    primary,
+    primaryIsPerson: order.primaryIsPerson,
+    ownItems: own.length,
     viaGlobal: collected.filter(c => c.viaGlobal).map(c => c.name),
-    items: lhFilterStreamItems(merged, focus),
+    items,
   };
 }
 
@@ -2208,6 +2393,54 @@ function lhRenderStreamHtml(tag, cs) {
   return `<h3>Latest ${escapeHtml(tag)} coverage around the web</h3>\n${lines.join("\n")}`;
 }
 
+
+// ---------------------------------------------------------------------------
+// v7: meta description against body, on the qualifier in front of a date.
+// "Sept. 30" in the meta and "the week of Sept. 30" in the body are two
+// different promises about the same date, and the one the reader sees first is
+// the one in the search result. Same date, different qualifier, warning.
+// ---------------------------------------------------------------------------
+const LH_DATE_TOKEN_SOURCE = "\\b(?:jan|feb|sept|oct|nov|dec)\\.?\\s*\\d{1,2}\\b|\\b(?:march|april|may|june|july|august|september|october|november|december)\\s+\\d{1,2}\\b";
+
+// Longest first: "the week of" has to win over "week of", and "as early as"
+// over "as". A date with none of these in front of it is unqualified, and an
+// unqualified date does not match a qualified one.
+const LH_DATE_QUALIFIERS = [
+  "on or before", "no later than", "as early as", "the week of", "week of",
+  "as soon as", "sometime in", "early in", "later in",
+  "around", "before", "during", "through", "toward", "towards", "until",
+  "after", "since", "early", "late", "mid", "by", "on",
+];
+
+// date string -> the qualifier in front of its first appearance ("" if none).
+function lhDateQualifiers(text) {
+  const found = new Map();
+  const hay = lhNormalizeForCompare(text);
+  const re = new RegExp(LH_DATE_TOKEN_SOURCE, "gi");
+  let m;
+  while ((m = re.exec(hay)) !== null) {
+    const date = m[0].replace(/\s+/g, " ").trim();
+    if (found.has(date)) continue;
+    const before = hay.slice(0, m.index);
+    const qual = LH_DATE_QUALIFIERS.find(q => new RegExp(`\\b${q}[\\s,-]*$`).test(before)) || "";
+    found.set(date, qual);
+  }
+  return found;
+}
+
+function lhMetaDateWarnings(meta, bodyText) {
+  const inMeta = lhDateQualifiers(meta || "");
+  const inBody = lhDateQualifiers(bodyText || "");
+  const warnings = [];
+  const show = (q, d) => (q ? `"${q} ${d}"` : `"${d}" with no qualifier`);
+  inMeta.forEach((q, date) => {
+    if (!inBody.has(date)) return;
+    const b = inBody.get(date);
+    if (b === q) return;
+    warnings.push(`Meta/body date mismatch: the meta description has ${show(q, date)} and the body has ${show(b, date)}.`);
+  });
+  return warnings;
+}
 
 // ---------------------------------------------------------------------------
 // Lint panel (warnings only, never blocks output)
@@ -2320,6 +2553,9 @@ function lhLint(headline, meta, bodyHtml, editorReport, extra, range, ctx) {
   const generic = [...new Set(hrefs.filter(lhIsGenericUrl))];
   if (generic.length) warnings.push(`Generic section URL linked: ${generic.join(", ")}`);
 
+  // v7: the same date, qualified one way in the meta and another in the body.
+  warnings.push(...lhMetaDateWarnings(meta, text));
+
   // The same fact told twice in two different sections.
   warnings.push(...lhRepetitionWarnings(bodyHtml));
 
@@ -2340,6 +2576,8 @@ const LH_WARNING_CATEGORIES = [
   // Off-storyline claims and misattributed sourcing share one column: both are
   // "this sentence is not resting on what it should be".
   ["off-storyline/source", /^off-storyline:|^aggregator account named|^generic section url linked/i],
+  // v7: the meta description promising a different date than the body.
+  ["meta/body date", /^meta\/body date mismatch/i],
 ];
 
 function lhCategorize(warnings) {
@@ -2388,6 +2626,46 @@ function lhRenderLint(lint, notes) {
 // Generation: writer pass, guarded editor pass, code-built stamp and section.
 // The pipeline is DOM-free so single runs and batch runs share one code path.
 // ---------------------------------------------------------------------------
+// v7: hub-worthiness. A hub is a page that keeps being updated, so it has to
+// rest on a storyline that actually ran: several separate reports, over more
+// than a single day. Anything thinner is a news item, not a hub. The test runs
+// on what the writer's claims actually lean on, not on how many entries the
+// tag matched, because a tag can match twenty entries and the piece still rest
+// on two of them. The output is still produced and still viewable; it is the
+// status and the collapsed panel that say not to publish it as a hub.
+const LH_HUB_MIN_ENTRIES = 4;
+const LH_HUB_MIN_DAYS = 2;
+const LH_MINOR_STATUS = "Too minor for a hub";
+
+// Distinct entries cited, distinct dates among them, and the inclusive
+// calendar-day span from the earliest to the latest.
+function lhSupportStats(draft, entries) {
+  const cited = [...new Set((Array.isArray(draft && draft.claims) ? draft.claims : [])
+    .map(c => Number(c && c.entry_index))
+    .filter(n => !isNaN(n) && entries[n]))];
+  const days = [...new Set(cited.map(n => (entries[n].date || "")).filter(Boolean))].sort();
+  let span = 0;
+  if (days.length) {
+    const first = Date.parse(`${days[0]}T00:00:00Z`);
+    const last = Date.parse(`${days[days.length - 1]}T00:00:00Z`);
+    span = (isNaN(first) || isNaN(last)) ? days.length : Math.round((last - first) / 86400000) + 1;
+  }
+  return { count: cited.length, days: days.length, span };
+}
+
+// A run with no usable claims at all is not "minor", it is truncated or broken,
+// and that is reported elsewhere. Only a run that traced its sourcing and came
+// back thin is judged here.
+function lhTooMinor(stats) {
+  return stats.count > 0 && (stats.count < LH_HUB_MIN_ENTRIES || stats.span < LH_HUB_MIN_DAYS);
+}
+
+function lhMinorNote(stats) {
+  return `${LH_MINOR_STATUS}: the storyline rests on ${stats.count} entr${stats.count === 1 ? "y" : "ies"} `
+    + `across ${stats.span} calendar day${stats.span === 1 ? "" : "s"} `
+    + `(a hub needs ${LH_HUB_MIN_ENTRIES} entries over ${LH_HUB_MIN_DAYS} days). The draft is below.`;
+}
+
 const LH_SHORT_MIN_WORDS = 150;
 const LH_SHORT_MAX_WORDS = 300;
 const LH_THIN_ENTRIES = 3; // below this the storyline is too thin for the full format
@@ -2511,6 +2789,7 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
     thin: false, status: "ok", note: "", csNote: "",
     entities: [], sensitiveTerms: [], sensitiveExcluded: 0, sensitiveNote: "",
     duplicateOf: "", truncated: false, relay: {},
+    support: { count: 0, days: 0, span: 0 }, tooMinor: false, minorNote: "",
   };
 
   // Nothing to write from: do not spend a relay call on it.
@@ -2571,7 +2850,19 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
   };
   const writerBody = (draft.body_html || "").trim();
   result.storyline = focus || (draft.detected_storyline || "").toString().trim();
-  result.entities = lhEntityList(draft.storyline_entities);
+  // v7: people before teams, so everything downstream (the dedupe key, the
+  // batch row, the content stream section and its heading) follows whoever the
+  // storyline is actually about.
+  const ordered = await lhOrderEntities(draft.storyline_entities);
+  result.entities = ordered.names;
+  result.primaryEntity = ordered.primary;
+  result.primaryIsPerson = ordered.primaryIsPerson;
+
+  // v7: is this storyline big enough to be a hub at all? Measured on the
+  // writer's own claim trace, before the editor pass touches anything.
+  result.support = lhSupportStats(draft, entries);
+  result.tooMinor = lhTooMinor(result.support);
+  result.minorNote = result.tooMinor ? lhMinorNote(result.support) : "";
 
   // v5: did the reply get cut off? Three independent signals: the relay says it
   // hit the token ceiling, the JSON had to be repaired to parse at all, or the
@@ -2674,13 +2965,17 @@ async function lhRunPipeline(tag, focus, matched, onStatus, opts) {
 
   // How many distinct entries the piece actually leans on. Fewer than three and
   // the sourcing is thin even when the tag itself had more entries.
-  const support = new Set((Array.isArray(draft.claims) ? draft.claims : [])
-    .map(c => Number(c && c.entry_index))
-    .filter(n => !isNaN(n) && entries[n])).size;
+  const support = result.support.count;
   if (support > 0 && support < LH_THIN_ENTRIES && !result.thin) {
     result.thin = true;
     if (result.status === "ok") result.status = "short";
     extraWarnings.push(`Storyline rests on ${support} entr${support === 1 ? "y" : "ies"}.`);
+  }
+
+  // v7: "too minor" outranks "short". Both say the sourcing is thin; this one
+  // says the piece should not be a hub at all, so it is the one on the row.
+  if (result.tooMinor && (result.status === "ok" || result.status === "short")) {
+    result.status = "minor";
   }
 
   // The timestamp is code's job: strip whatever the model wrote, prepend ours.
@@ -2757,13 +3052,21 @@ async function generateLivingHub() {
     storylineEl.classList.toggle("hidden", !result.storyline);
     document.getElementById("lhThin").classList.toggle("hidden", !result.thin);
 
+    // v7: a storyline that is not hub-worthy still produces its draft; the card
+    // just opens collapsed behind the banner, and the banner opens it.
+    const minor = result.status === "minor";
+    const minorEl = document.getElementById("lhMinor");
+    minorEl.textContent = minor ? `${result.minorNote} Click to view it.` : "";
+    minorEl.classList.toggle("hidden", !minor);
+    document.getElementById("livingOutCard").classList.toggle("lh-collapsed", minor);
+
     document.getElementById("lhHeadline").value = result.headline;
     document.getElementById("lhMeta").value = result.meta;
     document.getElementById("lhBody").value = result.body;
     document.getElementById("lhHeadlineLen").textContent = `${result.headline.length}/${LH_MAX_HEADLINE}`;
     document.getElementById("lhMetaLen").textContent = `${result.meta.length}/${LH_MAX_META}`;
     document.getElementById("livingOutCard").classList.remove("hidden");
-    lhRenderLint(result.lint, lhRunNotes(result));
+    lhRenderLint(result.lint, [result.minorNote].concat(lhRunNotes(result)));
 
     // Feed the existing Presto output box so the existing copy/injection path
     // works for this mode's body exactly as it does for the other modes.
@@ -2772,6 +3075,7 @@ async function generateLivingHub() {
     document.getElementById("outCard").classList.remove("hidden");
 
     setStatus("Done." + result.csNote + (result.sensitiveNote ? ` ${result.sensitiveNote}.` : "")
+      + (minor ? ` ${LH_MINOR_STATUS}: ${result.support.count} entries across ${result.support.span} days.` : "")
       + (result.thin ? " Thin sourcing: short format." : "")
       + " Copy the HTML, then use the injector on the Presto page.");
   } catch (e) {
@@ -2808,13 +3112,27 @@ function lhBatchStatusLabel(r) {
   if (r.status === "truncated") return "Claims truncated: fact check incomplete";
   const total = Object.values(lhCategorize(r.lint.warnings)).reduce((a, b) => a + b, 0);
   const excluded = r.sensitiveExcluded ? `, ${r.sensitiveExcluded} excluded as sensitive` : "";
+  // v7: the hub-worthiness gate. The output exists, it just should not run as a
+  // hub, so the row says so and the numbers behind it sit in their own columns
+  // next to it. Anything the sensitive gate removed is still reported here.
+  if (r.status === "minor") return LH_MINOR_STATUS + excluded;
   const label = `${total} warning${total === 1 ? "" : "s"}`;
   if (r.thin) return (total ? `short, ${label}` : "short") + excluded;
   return (total ? label : "clean") + excluded;
 }
 
-function lhBatchRows() {
-  return lhBatchResults.map(r => {
+// v7: "too minor for a hub" rows sort to the bottom, so the rows worth reading
+// are the ones at the top. Everything else keeps the order it ran in: the sort
+// is stable, keyed on nothing but this one status.
+function lhBatchSorted() {
+  return lhBatchResults
+    .map((r, at) => ({ r, at }))
+    .sort((a, b) => ((a.r.status === "minor" ? 1 : 0) - (b.r.status === "minor" ? 1 : 0)) || (a.at - b.at))
+    .map(x => x.r);
+}
+
+function lhBatchRowsFrom(list) {
+  return list.map(r => {
     const c = LH_NO_OUTPUT_STATUSES.has(r.status) ? {} : lhCategorize(r.lint.warnings);
     return {
       tag: r.tag,
@@ -2822,6 +3140,8 @@ function lhBatchRows() {
       storyline: r.storyline || (LH_NO_OUTPUT_STATUSES.has(r.status) ? "" : "(none returned)"),
       entities: (r.entities || []).join(", "),
       words: r.words || 0,
+      support: (r.support && r.support.count) || 0,
+      span: (r.support && r.support.span) || 0,
       cats: c,
       links: r.links || 0,
       status: lhBatchStatusLabel(r),
@@ -2830,7 +3150,9 @@ function lhBatchRows() {
   });
 }
 
-const LH_BATCH_CAT_ORDER = ["truncated", "unverified claim", "unsourced sentence", "repeat", "relative date", "platform attribution", "editor rejected", "length", "self-referential", "off-storyline/source"];
+function lhBatchRows() { return lhBatchRowsFrom(lhBatchSorted()); }
+
+const LH_BATCH_CAT_ORDER = ["truncated", "unverified claim", "unsourced sentence", "repeat", "relative date", "platform attribution", "editor rejected", "length", "self-referential", "off-storyline/source", "meta/body date"];
 
 // Statuses that produce no hub. Their expanded row shows the reason instead.
 const LH_NO_OUTPUT_STATUSES = new Set(["skipped", "error", "sensitive", "duplicate", "truncated"]);
@@ -2839,10 +3161,12 @@ function lhRenderBatch() {
   const card = document.getElementById("batchCard");
   const tbody = document.getElementById("batchBody");
   tbody.innerHTML = "";
-  lhBatchRows().forEach((row, i) => {
+  const sorted = lhBatchSorted();
+  lhBatchRowsFrom(sorted).forEach((row, i) => {
     const tr = document.createElement("tr");
     tr.className = "batch-row";
-    const cells = [row.tag, String(row.entries), row.storyline, row.entities, String(row.words)];
+    const cells = [row.tag, String(row.entries), row.storyline, row.entities, String(row.words),
+      String(row.support), String(row.span)];
     LH_BATCH_CAT_ORDER.forEach(c => cells.push(String(row.cats[c] || 0)));
     cells.push(String(row.links), row.status);
     cells.forEach(v => {
@@ -2856,11 +3180,12 @@ function lhRenderBatch() {
     detail.className = "batch-detail hidden";
     const td = document.createElement("td");
     td.colSpan = cells.length;
-    const r = lhBatchResults[i];
+    const r = sorted[i];
     if (LH_NO_OUTPUT_STATUSES.has(r.status)) {
       td.textContent = [r.note || "No output.", ...lhRunNotes(r).slice(r.sensitiveNote ? 1 : 0)].join("\n");
     } else {
       const parts = [];
+      if (r.minorNote) parts.push(r.minorNote);
       lhRunNotes(r).forEach(n => parts.push(n));
       parts.push(`HEADLINE: ${r.headline}`);
       parts.push(`META: ${r.meta}`);
@@ -2881,11 +3206,11 @@ function lhRenderBatch() {
 // Plain text, counts only. No headline, no meta, no body, no source text, so
 // the summary can be pasted anywhere.
 function lhBatchSummaryText() {
-  const header = ["tag", "entries", "storyline", "entities", "words", ...LH_BATCH_CAT_ORDER, "links", "status"];
+  const header = ["tag", "entries", "storyline", "entities", "words", "support", "day span", ...LH_BATCH_CAT_ORDER, "links", "status"];
   const lines = [header.join(" | ")];
   lhBatchRows().forEach(row => {
     lines.push([
-      row.tag, row.entries, row.storyline, row.entities, row.words,
+      row.tag, row.entries, row.storyline, row.entities, row.words, row.support, row.span,
       ...LH_BATCH_CAT_ORDER.map(c => row.cats[c] || 0),
       row.links, row.status,
     ].join(" | "));
@@ -2930,6 +3255,7 @@ async function runBatchTest() {
           thin: false, status: "error", note: "Error: " + e.message,
           entities: [], sensitiveTerms: [], sensitiveExcluded: 0, sensitiveNote: "",
           duplicateOf: "", truncated: false, relay: {},
+          support: { count: 0, days: 0, span: 0 }, tooMinor: false, minorNote: "",
         });
       }
       lhRenderBatch();
@@ -2958,6 +3284,11 @@ function lhCopyFrom(buttonId, fieldId, label) {
 lhCopyFrom("lhCopyHeadline", "lhHeadline", "Copy headline");
 lhCopyFrom("lhCopyMeta", "lhMeta", "Copy meta description");
 lhCopyFrom("lhCopyBody", "lhBody", "Copy body HTML");
+
+// v7: the too-minor output is collapsed, never withheld. One click opens it.
+document.getElementById("lhMinor").addEventListener("click", () => {
+  document.getElementById("livingOutCard").classList.remove("lh-collapsed");
+});
 
 document.getElementById("batchBtn").addEventListener("click", runBatchTest);
 document.getElementById("batchCopyBtn").addEventListener("click", () => {
