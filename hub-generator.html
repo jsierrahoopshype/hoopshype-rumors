@@ -795,6 +795,8 @@ document.getElementById("copyBtn").addEventListener("click", () => {
 // LIVING HUB MODE (additive — nothing above this block is modified)
 // A continuously-updatable single-storyline page: writer pass, editor pass,
 // then a code-built "around the web" section and a code-run lint panel.
+// v2: the timestamp, the source names, the fact guard on the editor pass and
+// the claim trace are all handled in code. The model writes prose, not facts.
 // ============================================================================
 
 // Style bans shared by the prompts and the lint panel.
@@ -807,13 +809,35 @@ const LH_BANNED_PHRASES = [
   "it's not just", "it is not just",
 ];
 const LH_ALLOWED_TAGS = ["p", "a", "strong", "em", "h3"];
-const LH_MIN_WORDS = 350;
+const LH_MIN_WORDS = 280;
 const LH_MAX_WORDS = 550;
 const LH_MAX_HEADLINE = 70;
 const LH_MAX_META = 155;
 
-// Content Stream section rules for this mode (deliberately stricter and
-// plainer than the hub's card rendering).
+// Hedges and quantifiers the editor pass is not allowed to introduce, reword
+// or remove the meaning of. Longest first so "more than" wins over "than".
+const LH_HEDGES = [
+  "more than", "at least", "up to", "nearly", "about", "roughly",
+  "reportedly", "could", "may",
+];
+// Spelled-out numbers count as numbers for the fact guard and the claim trace.
+const LH_NUM_WORDS = [
+  "one", "two", "three", "four", "five", "six", "seven", "eight", "nine",
+  "ten", "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen",
+  "seventeen", "eighteen", "nineteen", "twenty", "thirty", "forty", "fifty",
+  "sixty", "seventy", "eighty", "ninety", "hundred", "thousand", "million",
+  "billion", "dozen",
+];
+
+// Relative time references that must never survive into the body or the meta.
+const LH_RELATIVE_PATTERNS = [
+  /\bin \d+ days\b/i, /\bdays away\b/i, /\bnext week\b/i, /\blast week\b/i,
+  /\bthis week\b/i, /\btomorrow\b/i, /\byesterday\b/i, /\btonight\b/i,
+  /\btoday\b/i,
+];
+const LH_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+// Content Stream section rules for this mode.
 const LH_CS_MAX_ITEMS = 6;
 const LH_CS_WINDOW_HOURS = 24 * 7;
 const LH_CS_MIN_ITEMS = 2;
@@ -825,7 +849,7 @@ const LH_CS_BLOCKLIST = [
 
 const LIVING_WRITER_PROMPT = `You are an NBA writer for HoopsHype producing a LIVING HUB: one page about one storyline, rewritten from scratch every time there is news, so it always reads as current.
 
-You will receive a PLAYER, an optional STORYLINE FOCUS, an UPDATED STAMP string, and a list of archive ENTRIES (reporter rumors and quotes) newest first.
+You will receive a PLAYER, an optional STORYLINE FOCUS, and numbered archive ENTRIES (newest first). Each entry carries its own INDEX, DATE, OUTLET, REPORTER and URL.
 
 === ABSOLUTE RULE: NO OUTSIDE FACTS ===
 Every name, date, number, team, dollar figure, quote and claim MUST come from the supplied ENTRIES. Do not use your own NBA knowledge to add anything. If a fact is not in the entries, it does not appear.
@@ -835,18 +859,30 @@ Every name, date, number, team, dollar figure, quote and claim MUST come from th
 - If no storyline focus is given, identify the single dominant storyline across the last 14 days of entries and use only entries about that one. Do not blend two storylines.
 - Ignore tangential quotes, unrelated trade chatter and general commentary.
 
-=== FIXED STRUCTURE (exactly this, in this order) ===
-1. First line, before any heading, exactly: <p><em>Updated {STAMP}</em></p> — copy the UPDATED STAMP string verbatim, do not reformat it, do not invent a different time.
-2. A lead paragraph with no heading: what is new in the latest 24-48 hours of entries.
-3. <h3>What we know</h3> followed by <p> paragraphs: the core facts — money, terms, leverage, other teams involved.
-4. <h3>What comes next</h3> followed by <p> paragraphs: dated deadlines and upcoming events that the entries actually name.
-Every section is an <h3> followed by <p> paragraphs. No other headings, no other sections.
+=== STRUCTURE (exactly this, in this order) ===
+1. A lead paragraph with no heading: what is new in the latest 24-48 hours of entries. Do NOT write a timestamp, a dateline or an "Updated ..." line. One is added automatically after you finish; if you write one it will be deleted.
+2. <h3>What we know</h3> followed by <p> paragraphs: the core facts — money, terms, leverage, other teams involved.
+3. <h3>What comes next</h3> followed by <p> paragraphs: dated deadlines and upcoming events that the entries actually name.
+No other headings, no other sections.
 
 === NO REPETITION ===
 State each fact ONCE in the whole piece. A dollar figure, a term length, a team's interest, a deadline: once. If it appeared in the lead, it does not reappear under "What we know."
 
+=== SOURCE NAMES ===
+- Name the source using that entry's own OUTLET and REPORTER fields. If the entry has a REPORTER, credit the reporter; otherwise credit the OUTLET.
+- Use the OUTLET string exactly as given. Never substitute a parent company or a sister publication for it.
+- Never invent a reporter's name, never complete a partial name, never attach a reporter to an entry they are not on.
+
 === ATTRIBUTION ===
-Attribute every reported fact inline, linking the reporter or outlet to the source URL from that entry: <a href="https://example.com/story">Shams Charania</a> reported... Use the URL exactly as given in the entry. Never link to a URL that is not in the entries.
+- Attribute every reported fact inline, once, linking the reporter or outlet to that entry's URL: <a href="https://example.com/story">Reporter Name</a> reported...
+- Vary the form: "reported", "according to", "per". Never use the same "per X" construction in two consecutive sentences, and do not open three sentences in a row the same way.
+- Use the URL exactly as given in the entry. Never link to a URL that is not in the entries.
+
+=== ABSOLUTE DATES ===
+- Convert EVERY relative time reference in the sources into an absolute date, computed from the DATE of the entry it came from. "in seven days" in an entry dated Sept. 21 becomes "Sept. 28". The same goes for "next week", "days away", "tomorrow", "this week", "Monday" and any other relative reference.
+- Write dates in AP style: Jan., Feb., Aug., Sept., Oct., Nov., Dec. abbreviated; March, April, May, June and July spelled out.
+- If the absolute date cannot be computed with certainty from the entry's date, DROP the time reference. Never guess a date, and never leave the relative wording in.
+- This rule applies to the meta description exactly as it applies to the body.
 
 === FORMATTING ===
 - Allowed tags ONLY: p, a, strong, em, h3. No ul, ol, li, table, div, span, br, h1, h2, h4. No inline styles. No class attributes. No emojis. No markdown.
@@ -862,31 +898,50 @@ Third person throughout. No "we", no "I", no first person of any kind. Minor ana
 - No throat-clearing intro. Open on the news, not on setup.
 
 === LENGTH ===
-350 to 550 words of body copy. Count before you answer.
+280 to 550 words of body copy. Never pad. If the entries support fewer words, stop writing. A tight 300-word hub beats a padded 500-word one.
 
 === HEADLINE AND META ===
 - headline: pattern "[Player] [storyline]: latest updates" — specific about the storyline, max 70 characters.
-- meta_description: max 155 characters, specific facts, no clickbait, no questions.
+- meta_description: max 155 characters, specific facts, no clickbait, no questions, absolute dates only.
+
+=== CLAIM TRACE ===
+Also return "claims": one object per factual sentence in the body, in order:
+{"sentence_start": "the first 6 to 10 words of that sentence, copied exactly", "entry_index": <the INDEX of the entry that fact came from>, "source_quote": "up to 25 words copied VERBATIM from that entry's text or quote"}
+source_quote must be an exact character-for-character substring of that entry. Do not paraphrase it, do not fix its punctuation, do not stitch two passages together. Every sentence containing a number, a dollar figure or a date needs a claim entry.
 
 === OUTPUT ===
 Return ONLY a JSON object, no preamble, no code fence, no commentary:
-{"headline": "...", "meta_description": "...", "body_html": "..."}
-body_html is the full article HTML as a single string. Do not add a closing "head to HoopsHype" line or any sign-off; that is appended automatically.`;
+{"headline": "...", "meta_description": "...", "body_html": "...", "claims": [...]}
+Do not add a closing "head to HoopsHype" line or any sign-off; that is appended automatically.`;
 
-const LIVING_EDITOR_PROMPT = `You are a HoopsHype copy editor checking a living hub draft against its source material. You will receive a PLAYER, an optional STORYLINE FOCUS, the DRAFT as JSON, and the same archive ENTRIES the writer used.
+const LIVING_EDITOR_PROMPT = `You are a HoopsHype copy editor tightening a living hub draft. You will receive a PLAYER, an optional STORYLINE FOCUS, the DRAFT as JSON, and the same archive ENTRIES the writer used.
 
-Edit the draft. Do all of this:
-1. REPETITION: remove any fact stated more than once, keeping the clearest single instance. Dollar figures, contract terms, team interest, deadlines: once each in the whole piece.
-2. NUMBERS: check every number, dollar figure, year, game count and date against the ENTRIES. Fix anything that misstates an entry. Remove anything no entry supports. Never add a number of your own.
-3. CONTRADICTIONS: flag and fix internal contradictions. Example: a stated floor that equals the offer on the table but is described as a gap between the two sides. Make the piece internally consistent with the entries.
-4. STYLE BANS: remove every em dash. Remove every "it's not just X, it's Y" construction. Remove these words and phrases: delve, leverage, seamless, robust, navigate, unlock, unleash, foster, intricate, tapestry, testament, "in the realm of", "it's worth noting", "it's important to remember", "not nothing", "not accidental", "meaningful backdrop", "tells you", "rounding error", "franchise-altering". No first person. No throat-clearing intro.
-5. TAGS: allowed tags are ONLY p, a, strong, em, h3. Convert or remove anything else. No inline styles, no class attributes, no emojis. Team and player names bolded on first mention only.
-6. STRUCTURE: keep the <p><em>Updated ...</em></p> first line verbatim, then the unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3>. Keep every inline source link. Keep the body between 350 and 550 words.
-7. HEADLINE/META: headline max 70 characters, meta_description max 155 characters. Tighten if over.
+=== YOU MAY ONLY CUT OR TIGHTEN ===
+You may delete sentences and clauses. You may fix style violations. That is the whole job.
+
+You may NOT change, add or reword ANY of the following, anywhere:
+- any number, dollar figure, date or quantity
+- any quantifier or hedge: nearly, about, roughly, more than, at least, up to, reportedly, could, may
+- any attribution: a reporter name, an outlet name or a link
+If a number or a hedge is wrong, unsupported or contradictory, DELETE the sentence that carries it. Do not rewrite it into a different number or a different hedge. Changing "nearly six" to "more than six" is a fabrication, not an edit.
+
+Do not claim to have verified anything. You are not a fact checker and you have no way to confirm a number is right. Never write that something was confirmed, checked or verified.
+
+=== WHAT TO CUT ===
+1. Any fact stated more than once. Keep the clearest single instance, delete the rest.
+2. Any sentence whose claim is not supported by the ENTRIES. Delete it whole.
+3. Any internal contradiction. Delete the weaker sentence rather than reconciling the two.
+4. Em dashes, "it's not just X, it's Y" constructions, first person, throat-clearing intros, and these words and phrases: delve, leverage, seamless, robust, navigate, unlock, unleash, foster, intricate, tapestry, testament, "in the realm of", "it's worth noting", "it's important to remember", "not nothing", "not accidental", "meaningful backdrop", "tells you", "rounding error", "franchise-altering".
+5. Any relative time reference that survived: "in seven days", "days away", "next week", "this week", "tomorrow", "tonight", "today", a bare weekday. Delete the reference or the sentence. Do not compute a replacement date yourself.
+6. Anything outside the allowed tags p, a, strong, em, h3, plus any inline style, class attribute or emoji.
+
+Keep the structure: unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3>. Keep every inline source link on the sentences you keep. Do not write a timestamp or an "Updated ..." line; one is added in code.
+
+=== ISSUES ===
+"issues" lists only concrete edits you actually made, one edit per item, each starting with "Removed" or "Reworded". Example: "Removed the repeated contract figure in the third paragraph." Do not report word counts, character counts, tag checks or anything you merely inspected. If you changed nothing, return an empty array.
 
 Return ONLY a JSON object, no preamble, no code fence:
-{"headline": "...", "meta_description": "...", "body_html": "...", "issues": ["short description of each change you made"]}
-If you changed nothing, return an empty issues array.`;
+{"headline": "...", "meta_description": "...", "body_html": "...", "issues": [...]}`;
 
 // AP-style month abbreviations: March through July are never abbreviated.
 const LH_AP_MONTHS = {
@@ -894,9 +949,10 @@ const LH_AP_MONTHS = {
   May: "May", June: "June", July: "July", August: "Aug.",
   September: "Sept.", October: "Oct.", November: "Nov.", December: "Dec.",
 };
+const LH_AP_MONTH_TOKENS = ["jan.", "feb.", "march", "april", "may", "june", "july", "aug.", "sept.", "oct.", "nov.", "dec."];
 
-// "Sept. 22, 2026, 3:05 p.m. ET" for the <em>Updated ...</em> line, always in
-// Eastern time regardless of where the browser is.
+// "Sept. 22, 2026, 3:05 p.m. ET" — built in code, always Eastern, never by the
+// model. v2: this is prepended after the editor pass.
 function lhUpdatedStamp(now) {
   const d = now || new Date();
   const parts = {};
@@ -907,6 +963,19 @@ function lhUpdatedStamp(now) {
   const month = LH_AP_MONTHS[parts.month] || parts.month;
   const ampm = (parts.dayPeriod || "").toUpperCase() === "AM" ? "a.m." : "p.m.";
   return `${month} ${parts.day}, ${parts.year}, ${parts.hour}:${parts.minute} ${ampm} ET`;
+}
+
+// Drop any "Updated ..." paragraph the model produced anyway, then prepend the
+// one code built.
+function lhStripStampParas(bodyHtml) {
+  return (bodyHtml || "").replace(/<p>[\s\S]*?<\/p>/gi, block => {
+    const inner = block.replace(/<[^>]*>/g, "").trim();
+    return /^updated\b/i.test(inner) ? "" : block;
+  }).replace(/^\s+/, "");
+}
+
+function lhApplyStamp(bodyHtml, stamp) {
+  return `<p><em>Updated ${stamp}</em></p>\n${lhStripStampParas(bodyHtml)}`;
 }
 
 // "Sept. 22" for the content-stream lines.
@@ -935,9 +1004,254 @@ function lhStripEmoji(s) {
     .trim();
 }
 
+function lhStripTags(html) {
+  return (html || "").replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&").replace(/\s+/g, " ").trim();
+}
+
+// ---------------------------------------------------------------------------
+// Entry preparation: outlet and reporter resolved in code, not guessed by the
+// model, and every entry numbered so claims can point back at it.
+// ---------------------------------------------------------------------------
+
+// Outlet inferred from the URL. Only used when the record carries no outlet of
+// its own, except for The Athletic, which always wins: nytimes.com/athletic
+// URLs must never be credited to The New York Times.
+function lhOutletFromUrl(url, entry) {
+  let host = "", path = "";
+  try {
+    const u = new URL(url);
+    host = u.hostname.replace(/^www\./, "").toLowerCase();
+    path = u.pathname.toLowerCase();
+  } catch { return ""; }
+  if (host === "theathletic.com" || host.endsWith(".theathletic.com")) return "The Athletic";
+  if (host === "nytimes.com" || host.endsWith(".nytimes.com")) {
+    return path.includes("/athletic") ? "The Athletic" : "The New York Times";
+  }
+  if (host === "espn.com" || host.endsWith(".espn.com")) return "ESPN";
+  if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") {
+    const who = (entry && (entry.channel || entry.channel_name || entry.reporter || entry.author || entry.byline)) || "";
+    return who || "YouTube";
+  }
+  return "";
+}
+
+function lhIsAthleticUrl(url) {
+  try {
+    const u = new URL(url);
+    const host = u.hostname.replace(/^www\./, "").toLowerCase();
+    if (host === "theathletic.com" || host.endsWith(".theathletic.com")) return true;
+    return (host === "nytimes.com" || host.endsWith(".nytimes.com")) && u.pathname.toLowerCase().includes("/athletic");
+  } catch { return false; }
+}
+
+function lhResolveOutlet(entry, url) {
+  const mapped = lhOutletFromUrl(url, entry);
+  if (mapped === "The Athletic") return mapped; // never the parent paper
+  const own = (entry.outlet || entry.media || entry.publication || entry.source || "").toString().trim();
+  return own || mapped || "";
+}
+
+function lhResolveReporter(entry) {
+  return (entry.reporter || entry.author || entry.byline || entry.writer || "").toString().trim();
+}
+
+// One normalized record per archive entry, numbered for the claim trace.
+function lhBuildEntries(matched) {
+  return matched.slice(0, MAX_ENTRIES).map((e, i) => {
+    const url = cleanUrl(e.source_url || "");
+    const text = (e.text || "").slice(0, 450);
+    const quote = e.quote || "";
+    return {
+      idx: i,
+      date: e.archive_date || "",
+      outlet: lhResolveOutlet(e, url),
+      reporter: lhResolveReporter(e),
+      url,
+      text,
+      quote,
+      verify: `${text} ${quote}`,
+    };
+  });
+}
+
+function lhEntriesPayload(entries) {
+  return entries.map(e => {
+    let block = `--- ENTRY ${e.idx}\nDATE: ${e.date} | OUTLET: ${e.outlet || "(none)"} | REPORTER: ${e.reporter || "(none)"} | URL: ${e.url}\nTEXT: ${e.text}`;
+    if (e.quote) block += `\nQUOTE: "${e.quote}"`;
+    return block;
+  }).join("\n");
+}
+
+// ---------------------------------------------------------------------------
+// Fact guard: the editor pass may only cut. Anything numeric or hedged that is
+// in the editor's output but not in the writer's draft means it rewrote a fact.
+// ---------------------------------------------------------------------------
+function lhNormalizeForCompare(s) {
+  return (s || "")
+    .replace(/[‘’]/g, "'")
+    .replace(/[“”]/g, '"')
+    .toLowerCase()
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+// Every number token (digits or spelled out) plus the up-to-3-word window in
+// front of it, and every hedge phrase present.
+function lhFactTokens(html) {
+  const text = lhNormalizeForCompare(lhStripTags(html));
+  const words = text.split(/\s+/).filter(Boolean);
+  const bare = w => w.replace(/[^a-z0-9$.,%-]/g, "");
+  const isNumber = w => {
+    const b = bare(w);
+    if (/\d/.test(b)) return true;
+    return LH_NUM_WORDS.includes(w.replace(/[^a-z]/g, ""));
+  };
+  const tokens = new Set();
+  words.forEach((w, i) => {
+    if (!isNumber(w)) return;
+    tokens.add(bare(w));                                            // the token itself
+    tokens.add(words.slice(Math.max(0, i - 3), i + 1).map(bare).join(" ")); // its window
+  });
+  const hedges = new Set(LH_HEDGES.filter(h => text.includes(h)));
+  return { tokens, hedges };
+}
+
+// Returns the offending snippet, or null when the editor only cut.
+function lhGuardEditor(writerBody, editorBody) {
+  const w = lhFactTokens(writerBody);
+  const e = lhFactTokens(editorBody);
+  for (const t of e.tokens) if (t && !w.tokens.has(t)) return t;
+  for (const h of e.hedges) if (!w.hedges.has(h)) return h;
+  return null;
+}
+
+// The editor is told to report edits, not inspections. Drop the inspections.
+function lhFilterIssues(issues) {
+  return (Array.isArray(issues) ? issues : []).filter(raw => {
+    const s = (raw || "").toString().trim();
+    if (!s) return false;
+    if (/^(confirmed|checked|verified)\b/i.test(s)) return false;
+    if (/within (limits|range)/i.test(s)) return false;
+    return true;
+  });
+}
+
+// ---------------------------------------------------------------------------
+// Claim trace: every source_quote must really be in the entry it points at.
+// Claims are never rendered, they only drive lint.
+// ---------------------------------------------------------------------------
+const LH_ABBREVS = ["Jan", "Feb", "Aug", "Sept", "Oct", "Nov", "Dec", "Mr", "Mrs", "Ms", "Dr", "St", "vs", "No", "Inc", "a\\.m", "p\\.m", "U\\.S"];
+
+// Split on real sentence ends only. Month abbreviations and a.m./p.m. are not
+// sentence ends, and a claim's sentence_start has to line up with a whole one.
+function lhSplitSentences(raw) {
+  let text = raw;
+  LH_ABBREVS.forEach(a => {
+    text = text.replace(new RegExp(`\\b${a}\\.`, "g"), m => m.replace(/\./g, "\u0001"));
+  });
+  text = text.replace(/(\d)\.(\d)/g, "$1\u0001$2"); // 1.5 million
+  return text
+    .split(/(?<=[.!?])\s+/)
+    .map(s => s.replace(/\u0001/g, ".").trim())
+    .filter(Boolean);
+}
+
+// Block by block, so a heading never runs into the paragraph beneath it.
+function lhSentences(bodyHtml) {
+  return lhStripStampParas(bodyHtml)
+    .split(/<\/(?:p|h3)>/i)
+    .map(b => lhStripTags(b))
+    .filter(Boolean)
+    .reduce((all, b) => all.concat(lhSplitSentences(b)), []);
+}
+
+function lhVerifyClaims(claims, entries, bodyHtml) {
+  const warnings = [];
+  const list = Array.isArray(claims) ? claims : [];
+  list.forEach(c => {
+    const label = ((c && c.sentence_start) || "(no sentence given)").toString().slice(0, 80);
+    const entry = entries[Number(c && c.entry_index)];
+    const quote = lhNormalizeForCompare(c && c.source_quote);
+    if (!entry || !quote || !lhNormalizeForCompare(entry.verify).includes(quote)) {
+      warnings.push(`Unverified claim: ${label}`);
+    }
+  });
+  const starts = list.map(c => lhNormalizeForCompare(c && c.sentence_start)).filter(Boolean);
+  lhSentences(bodyHtml).forEach(s => {
+    if (!/\d/.test(s)) return;
+    const ns = lhNormalizeForCompare(s);
+    if (!starts.some(st => ns.startsWith(st) || ns.includes(st))) {
+      warnings.push(`Sentence with a number has no claim entry: ${s.slice(0, 80)}`);
+    }
+  });
+  return warnings;
+}
+
+// ---------------------------------------------------------------------------
+// Relative-date detection (body and meta)
+// ---------------------------------------------------------------------------
+function lhRelativeHits(text) {
+  const hits = [];
+  LH_RELATIVE_PATTERNS.forEach(re => {
+    const m = text.match(re);
+    if (m) hits.push(m[0]);
+  });
+  const words = text.split(/\s+/);
+  words.forEach((w, i) => {
+    const bare = w.toLowerCase().replace(/[^a-z]/g, "");
+    if (!LH_WEEKDAYS.includes(bare)) return;
+    const after = [];
+    for (let j = i + 1; j < Math.min(i + 4, words.length); j++) {
+      const nb = words[j].toLowerCase().replace(/[^a-z]/g, "");
+      if (LH_WEEKDAYS.includes(nb)) break; // a second weekday starts its own reference
+      after.push(words[j].toLowerCase());
+    }
+    const tail = after.join(" ");
+    const dated = LH_AP_MONTH_TOKENS.some(m => tail.includes(m)) || /\b\d{1,2}\b/.test(tail);
+    if (!dated) hits.push(w.replace(/[^A-Za-z]/g, ""));
+  });
+  return [...new Set(hits)];
+}
+
 // ---------------------------------------------------------------------------
 // Content stream section (built in code, never by the model)
 // ---------------------------------------------------------------------------
+function lhHost(url) {
+  try { return new URL(url).hostname.replace(/^www\./, "").toLowerCase(); }
+  catch { return ""; }
+}
+
+// Google News links point at news.google.com. Find the publisher's own URL on
+// the item if it exposes one; without it the item is unusable.
+const LH_PUBLISHER_URL_FIELDS = ["publisher_url", "original_url", "canonical_url", "external_url", "link_url", "source_url", "article_url", "url"];
+const LH_PUBLISHER_NAME_FIELDS = ["publisher", "publisher_name", "source_name", "site_name", "site", "outlet"];
+
+function lhPublisherUrl(it) {
+  for (const f of LH_PUBLISHER_URL_FIELDS) {
+    const v = it[f];
+    if (typeof v === "string" && v && lhHost(v) !== "news.google.com") return v;
+  }
+  return "";
+}
+
+function lhPublisherName(it) {
+  for (const f of LH_PUBLISHER_NAME_FIELDS) {
+    const v = it[f];
+    if (typeof v === "string" && v.trim() && v.trim().toLowerCase() !== "google news") return v.trim();
+  }
+  return "";
+}
+
+// Hashtags are stripped from what gets displayed, after the emoji pass.
+function lhCleanTitle(raw, hasTitle) {
+  let s = (raw || "").replace(/https?:\/\/\S+/g, " ");
+  s = lhStripEmoji(s);
+  s = s.replace(/(^|\s)#[\wÀ-ɏ]+/g, " ").replace(/\s{2,}/g, " ").trim();
+  s = s.replace(/\s+([.,;:!?])/g, "$1").trim();
+  return hasTitle ? s : s.slice(0, 120);
+}
+
 async function lhFetchStreamItems(player) {
   const ent = await csResolveEntity(player); // reuses the hub's resolver untouched
   if (!ent) return null;
@@ -963,21 +1277,39 @@ async function lhFetchStreamItems(player) {
     });
     if (blocked) return false;
 
+    // Defaults; each source below can override.
+    it.lh_href = it.url || "";
+    it.lh_source = CS_SOURCE_LABELS[it.source] || it.source || "";
+
     // Reddit: link posts to external sites only, no self-posts. The external
-    // target is what gets linked, so stash it for the renderer.
+    // target is what gets linked.
     if (it.source === "reddit") {
       const target = it.external_url || it.link_url || it.url || "";
-      try {
-        if (/(^|\.)reddit\.com$/i.test(new URL(target).hostname)) return false;
-      } catch { return false; }
+      if (!target || /(^|\.)reddit\.com$/i.test(lhHost(target)) || !lhHost(target)) return false;
       it.lh_href = target;
     }
-    return true;
+
+    // YouTube: no Shorts.
+    if (it.source === "youtube") {
+      if ((it.url || "").toLowerCase().includes("/shorts/")) return false;
+      if (/#shorts/i.test(`${it.title || ""} ${it.body_excerpt || ""}`)) return false;
+    }
+
+    // Google News: link the publisher, name the publisher, or drop the item.
+    if (it.source === "google-news") {
+      const href = lhPublisherUrl(it);
+      const name = lhPublisherName(it);
+      if (!href || !name) return false;
+      it.lh_href = href;
+      it.lh_source = name;
+    }
+
+    return !!it.lh_href && (it.lh_source || "").toLowerCase() !== "google news";
   });
 
   const seen = new Set();
   items = items.filter(it => {
-    const key = (it.url || "") + "|" + (it.title || it.body_excerpt || "").slice(0, 80).toLowerCase().trim();
+    const key = (it.lh_href || "") + "|" + (it.title || it.body_excerpt || "").slice(0, 80).toLowerCase().trim();
     if (seen.has(key)) return false;
     seen.add(key);
     return true;
@@ -991,14 +1323,10 @@ async function lhFetchStreamItems(player) {
 function lhRenderStreamHtml(player, cs) {
   if (!cs || !cs.items || cs.items.length < LH_CS_MIN_ITEMS) return "";
   const lines = cs.items.map(it => {
-    const href = it.lh_href || it.url || "";
-    const raw = it.title || it.body_excerpt || "";
-    let label = lhStripEmoji(raw.replace(/https?:\/\/\S+/g, "").replace(/\s{2,}/g, " ").trim());
-    if (!it.title) label = label.slice(0, 120);
+    const label = lhCleanTitle(it.title || it.body_excerpt || "", !!it.title);
+    const href = it.lh_href || "";
     if (!label || !href) return "";
-    const source = CS_SOURCE_LABELS[it.source] || it.source || "";
-    const when = lhShortDate(it.published_at);
-    const tail = [source, when].filter(Boolean).join(", ");
+    const tail = [it.lh_source || "", lhShortDate(it.published_at)].filter(Boolean).join(", ");
     return `<p><a href="${escapeHtml(href)}">${escapeHtml(label)}</a>${tail ? ` (${escapeHtml(tail)})` : ""}</p>`;
   }).filter(Boolean);
   if (lines.length < LH_CS_MIN_ITEMS) return "";
@@ -1008,9 +1336,9 @@ function lhRenderStreamHtml(player, cs) {
 // ---------------------------------------------------------------------------
 // Lint panel (warnings only, never blocks output)
 // ---------------------------------------------------------------------------
-function lhLint(headline, meta, bodyHtml, issues) {
-  const warnings = [];
-  const text = bodyHtml.replace(/<[^>]*>/g, " ").replace(/&nbsp;/g, " ");
+function lhLint(headline, meta, bodyHtml, issues, extra) {
+  const warnings = (extra || []).slice();
+  const text = lhStripTags(bodyHtml);
 
   const hitPhrases = LH_BANNED_PHRASES.filter(p => text.toLowerCase().includes(p));
   if (hitPhrases.length) warnings.push(`Banned phrase(s) in body: ${hitPhrases.join(", ")}`);
@@ -1033,7 +1361,7 @@ function lhLint(headline, meta, bodyHtml, issues) {
     warnings.push(`Dollar figure "${k}" appears ${figures[k]} times (max 2).`);
   });
 
-  const words = text.split(/\s+/).filter(Boolean).length;
+  const words = lhStripTags(lhStripStampParas(bodyHtml)).split(/\s+/).filter(Boolean).length;
   if (words < LH_MIN_WORDS || words > LH_MAX_WORDS) {
     warnings.push(`Body is ${words} words (target ${LH_MIN_WORDS}-${LH_MAX_WORDS}).`);
   }
@@ -1043,7 +1371,30 @@ function lhLint(headline, meta, bodyHtml, issues) {
   if ((meta || "").length > LH_MAX_META) {
     warnings.push(`Meta description is ${meta.length} characters (max ${LH_MAX_META}).`);
   }
-  return { warnings, issues: Array.isArray(issues) ? issues : [] };
+
+  // The Athletic is not The New York Times.
+  const hrefs = [...bodyHtml.matchAll(/href\s*=\s*"([^"]*)"/gi)].map(m => m[1]);
+  if (/the new york times/i.test(text) && hrefs.some(lhIsAthleticUrl)) {
+    warnings.push('Body credits "The New York Times" while citing an nytimes.com/athletic URL (should be The Athletic).');
+  }
+
+  // Relative time references, in the body and in the meta description.
+  const bodyRel = lhRelativeHits(text);
+  if (bodyRel.length) warnings.push(`Relative time reference(s) in body: ${bodyRel.join(", ")}`);
+  const metaRel = lhRelativeHits(meta || "");
+  if (metaRel.length) warnings.push(`Relative time reference(s) in meta description: ${metaRel.join(", ")}`);
+
+  // Attribution rhythm: the same "per Outlet" leaning on the piece.
+  const perCounts = {};
+  [...text.matchAll(/\bper ([A-Z][A-Za-z'\u2019-]*(?: [A-Z][A-Za-z'\u2019-]*){0,3})/g)].forEach(m => {
+    const key = `per ${m[1].trim()}`;
+    perCounts[key] = (perCounts[key] || 0) + 1;
+  });
+  Object.keys(perCounts).filter(k => perCounts[k] > 2).forEach(k => {
+    warnings.push(`"${k}" appears ${perCounts[k]} times (max 2).`);
+  });
+
+  return { warnings, issues: lhFilterIssues(issues) };
 }
 
 function lhRenderLint(lint) {
@@ -1072,7 +1423,7 @@ function lhRenderLint(lint) {
 }
 
 // ---------------------------------------------------------------------------
-// Generation: writer pass, then editor pass, then the code-built section
+// Generation: writer pass, guarded editor pass, code-built stamp and section
 // ---------------------------------------------------------------------------
 async function lhRelay(system, userMsg, maxTokens) {
   const r = await fetch(RELAY_URL, {
@@ -1097,16 +1448,13 @@ async function generateLivingHub() {
     const { tag, matched } = await getMatches();
     if (matched.length === 0) throw new Error("No matches to generate from.");
     const focus = document.getElementById("focus").value.trim();
-    const payload = buildPayload(matched);
-    const stamp = lhUpdatedStamp();
+    const entries = lhBuildEntries(matched);
+    const payload = lhEntriesPayload(entries);
+    const context = `PLAYER: ${tag}\nSTORYLINE FOCUS: ${focus || "(none given — identify the single dominant storyline in the last 14 days)"}`;
 
-    const context = `PLAYER: ${tag}\nSTORYLINE FOCUS: ${focus || "(none given — identify the single dominant storyline in the last 14 days)"}\nUPDATED STAMP: ${stamp}`;
-
-    const draft = await lhRelay(
-      LIVING_WRITER_PROMPT.replace("{STAMP}", stamp),
-      `${context}\n\nENTRIES:\n${payload}`,
-      5000
-    );
+    const draft = await lhRelay(LIVING_WRITER_PROMPT, `${context}\n\nENTRIES:\n${payload}`, 5000);
+    const writerBody = (draft.body_html || "").trim();
+    if (!writerBody) throw new Error("Writer pass returned no body HTML.");
 
     setStatus("Living hub: editor pass…");
     const edited = await lhRelay(
@@ -1114,18 +1462,38 @@ async function generateLivingHub() {
       `${context}\n\nDRAFT:\n${JSON.stringify({
         headline: draft.headline || "",
         meta_description: draft.meta_description || "",
-        body_html: draft.body_html || "",
+        body_html: writerBody,
       })}\n\nENTRIES:\n${payload}`,
       5000
     );
 
-    const headline = (edited.headline || draft.headline || "").trim();
-    const meta = (edited.meta_description || draft.meta_description || "").trim();
-    let body = (edited.body_html || draft.body_html || "").trim();
-    if (!body) throw new Error("Editor pass returned no body HTML.");
+    // The editor may only cut. Anything numeric or hedged that it introduced
+    // means it rewrote a fact, so its output is thrown away.
+    const extraWarnings = [];
+    const editorBody = (edited.body_html || "").trim();
+    const offending = editorBody ? lhGuardEditor(writerBody, editorBody) : "(empty editor output)";
+    let headline, meta, body, issues;
+    if (offending) {
+      extraWarnings.push(`Editor changed a fact or hedge, writer draft kept: "${offending}"`);
+      headline = (draft.headline || "").trim();
+      meta = (draft.meta_description || "").trim();
+      body = writerBody;
+      issues = [];
+    } else {
+      headline = (edited.headline || draft.headline || "").trim();
+      meta = (edited.meta_description || draft.meta_description || "").trim();
+      body = editorBody;
+      issues = edited.issues;
+    }
+
+    // Claim trace runs against whichever body survived.
+    extraWarnings.push(...lhVerifyClaims(draft.claims, entries, body));
+
+    // The timestamp is code's job: strip whatever the model wrote, prepend ours.
+    body = lhApplyStamp(body, lhUpdatedStamp());
 
     // Lint the writing before the code-built section is appended.
-    const lint = lhLint(headline, meta, body, edited.issues);
+    const lint = lhLint(headline, meta, body, issues, extraWarnings);
 
     let csNote = "";
     setStatus("Living hub: fetching content stream…");
