@@ -7,7 +7,7 @@
 // quote and URL below is made up.
 
 const { loadGenerator, relayReply } = require("./env.js");
-const { V7_CS_MANIFEST, v7PersonItems, v7TeamItems } = require("./fixtures.js");
+const { V7_CS_MANIFEST, v7PersonItems, v7TeamItems, v8BotItems } = require("./fixtures.js");
 
 const results = [];
 function demo(title, fn) {
@@ -90,20 +90,21 @@ async function run(gen, opts) {
 
 const warn = (r, re) => (r.lint.warnings || []).filter(w => re.test(w));
 
-// The demos exercise v6 and v7 behavior, so they need a v7 generator. On a
+// The demos exercise v6, v7 and v8 behavior, so they need a v8 generator. On a
 // branch that does not carry one, say so instead of failing thirty times over.
 function requireV6() {
   const gen = g();
   const missing = [
     "lhSensitiveDecision", "lhDuplicateRun", "lhOpeningOverlap", "lhParseAggregators", "lhRelayCapWarning",
     "lhOrderEntities", "lhMergeQuoteRuns", "lhSharedNgram", "lhSupportStats", "lhMetaDateWarnings",
+    "lhHubVerdict", "lhStorylineState", "lhFixDomainAnchors", "lhIsAggregatorItem", "lhStatusRank",
   ].filter(n => { try { return typeof gen.pick(n) !== "function"; } catch (e) { return true; } });
   if (!missing.length) return true;
-  console.log(`The generator at ${gen.file} is not the Living hub v7 build.`);
+  console.log(`The generator at ${gen.file} is not the Living hub v8 build.`);
   console.log(`Missing: ${missing.join(", ")}`);
   console.log("");
-  console.log("Run the demos against a v7 generator, either by checking out the");
-  console.log("living-hub-v7 branch, or with:");
+  console.log("Run the demos against a v8 generator, either by checking out the");
+  console.log("living-hub-v8 branch, or with:");
   console.log("  node tests/living-hub/demos.js --hub=/path/to/hub-generator.html");
   return false;
 }
@@ -592,79 +593,265 @@ await demo("v7.4. two sections sharing a 4-word run of content words are flagged
   };
 });
 
-// --- v7.5 hub-worthiness ----------------------------------------------------
-function oneDayDraft() {
+// --- v8.1 open vs closed storylines ----------------------------------------
+// v7 judged a storyline on its calendar-day span. v8 judges it on whether it is
+// still running, so the three demos below replace the v7.5 pair.
+function stateDraft(state, reason, claims, body) {
   return draft({
-    body_html: "<p>The Example Owls opened talks with Fake Player. The offer is on the table. Nothing has been signed.</p>",
-    claims: [
-      { sentence_start: "The Example Owls opened talks", entry_index: 0, source_quote: "opened talks" },
-      { sentence_start: "The offer is on the table", entry_index: 1, source_quote: "offer is on the table" },
-      { sentence_start: "Nothing has been signed", entry_index: 2, source_quote: "nothing has been signed" },
-    ],
+    body_html: body,
+    storyline_state: state,
+    storyline_state_reason: reason,
+    claims,
   });
 }
 
-await demo('v7.5a. a 3-entry, one-day storyline is "Too minor for a hub" and still viewable', async () => {
+const TRADE_CLAIMS = [
+  { sentence_start: "The Example Owls traded Fake Player", entry_index: 0, source_quote: "traded Fake Player" },
+  { sentence_start: "The deal was completed", entry_index: 1, source_quote: "the deal was completed" },
+  { sentence_start: "Fake Player has already reported", entry_index: 2, source_quote: "has already reported" },
+];
+
+const TALKS_CLAIMS = [
+  { sentence_start: "The Example Owls opened talks", entry_index: 0, source_quote: "opened talks" },
+  { sentence_start: "The offer is on the table", entry_index: 1, source_quote: "offer is on the table" },
+  { sentence_start: "Nothing has been signed", entry_index: 2, source_quote: "nothing has been signed" },
+];
+
+function sameDayEntries(texts) {
+  return texts.map((text, i) => entry({
+    archive_date: "2999-01-05", source_url: `https://example.com/v8/${i}`, text,
+  }));
+}
+
+await demo('v8.1a. a completed trade is "News, not a hub", and still viewable', async () => {
   const gen = g();
-  const matched = [
-    entry({ archive_date: "2999-01-05", source_url: "https://example.com/m/1", text: "The Example Owls opened talks with Fake Player." }),
-    entry({ archive_date: "2999-01-05", source_url: "https://example.com/m/2", text: "The offer is on the table for Fake Player." }),
-    entry({ archive_date: "2999-01-05", source_url: "https://example.com/m/3", text: "So far nothing has been signed by Fake Player." }),
-  ];
-  const r = await run(gen, { matched, writer: oneDayDraft() });
+  const matched = sameDayEntries([
+    "The Example Owls traded Fake Player to the Fake Bears on Jan. 5.",
+    "The deal was completed and is final, with no picks left to settle.",
+    "Fake Player has already reported to his new team.",
+  ]);
+  const body = "<p>The Example Owls traded Fake Player. The deal was completed. Fake Player has already reported.</p>";
+  const r = await run(gen, {
+    matched,
+    writer: stateDraft("closed", "the trade is done and the player has reported", TRADE_CLAIMS, body),
+  });
   return {
-    ok: r.status === "minor" && r.support.count === 3 && r.support.span === 1
-      && !!r.body && gen.pick("lhBatchStatusLabel")(r) === gen.pick("LH_MINOR_STATUS"),
+    ok: r.status === "news" && r.state === "closed" && !!r.body
+      && gen.pick("lhBatchStatusLabel")(r) === gen.pick("LH_NEWS_STATUS"),
     lines: [
-      `support: ${r.support.count} entries, ${r.support.days} distinct dates, ${r.support.span} day span`,
+      `storyline state: ${r.state} (${r.stateReason})`,
+      `support: ${r.support.count} entries, ${r.support.span} day span`,
       `status: ${r.status}, row status cell: ${gen.pick("lhBatchStatusLabel")(r)}`,
-      `body still produced: ${r.body ? "yes" : "no"} (${r.words} words), shown collapsed behind the banner`,
+      `body still produced: ${r.body ? "yes" : "no"} (${r.words} words), collapsed behind the banner`,
       `banner: ${r.minorNote}`,
     ],
   };
 });
 
-await demo("v7.5b. 4 entries across 2 days clears the gate", async () => {
+await demo("v8.1b. an open negotiation with 3 entries on one day is a normal hub", async () => {
   const gen = g();
-  const matched = [
-    entry({ archive_date: "2999-01-06", source_url: "https://example.com/n/1", text: "The Example Owls opened talks with Fake Player." }),
-    entry({ archive_date: "2999-01-06", source_url: "https://example.com/n/2", text: "The offer is on the table for Fake Player." }),
-    entry({ archive_date: "2999-01-05", source_url: "https://example.com/n/3", text: "So far nothing has been signed by Fake Player." }),
-    entry({ archive_date: "2999-01-05", source_url: "https://example.com/n/4", text: "A second team is watching Fake Player closely." }),
-  ];
-  const writer = draft({
-    body_html: "<p>The Example Owls opened talks with Fake Player. The offer is on the table. Nothing has been signed. A second team is watching.</p>",
-    claims: [
-      { sentence_start: "The Example Owls opened talks", entry_index: 0, source_quote: "opened talks" },
-      { sentence_start: "The offer is on the table", entry_index: 1, source_quote: "offer is on the table" },
-      { sentence_start: "Nothing has been signed", entry_index: 2, source_quote: "nothing has been signed" },
-      { sentence_start: "A second team is watching", entry_index: 3, source_quote: "second team is watching" },
-    ],
+  const matched = sameDayEntries([
+    "The Example Owls opened talks with Fake Player about an extension.",
+    "The offer is on the table and has not been withdrawn.",
+    "So far nothing has been signed by either side.",
+  ]);
+  const body = "<p>The Example Owls opened talks. The offer is on the table. Nothing has been signed.</p>";
+  const r = await run(gen, {
+    matched,
+    writer: stateDraft("open", "the extension is still being negotiated", TALKS_CLAIMS, body),
   });
-  const r = await run(gen, { matched, writer });
   return {
-    ok: r.status !== "minor" && r.support.count === 4 && r.support.span === 2,
-    lines: [`support: ${r.support.count} entries, ${r.support.span} day span`, `status: ${r.status}`],
+    ok: r.status === "ok" && r.state === "open" && r.verdict === "" && r.minorNote === "",
+    lines: [
+      `storyline state: ${r.state} (${r.stateReason})`,
+      `support: ${r.support.count} entries, all on 2999-01-05 (${r.support.span} day span)`,
+      `status: ${r.status} — the v7 two-day minimum is gone`,
+      `banner: ${r.minorNote || "(none)"}`,
+    ],
   };
 });
 
-await demo("v7.5c. minor rows sort to the bottom of the batch table", async () => {
+await demo('v8.1c. an open storyline resting on 2 entries is "Too minor for a hub"', async () => {
+  const gen = g();
+  const matched = sameDayEntries([
+    "The Example Owls opened talks with Fake Player about an extension.",
+    "The offer is on the table and has not been withdrawn.",
+  ]);
+  const body = "<p>The Example Owls opened talks. The offer is on the table.</p>";
+  const r = await run(gen, {
+    matched,
+    writer: stateDraft("open", "the extension is still being negotiated", TALKS_CLAIMS.slice(0, 2), body),
+  });
+  return {
+    ok: r.status === "minor" && r.state === "open" && !!r.body
+      && gen.pick("lhBatchStatusLabel")(r) === gen.pick("LH_MINOR_STATUS"),
+    lines: [
+      `storyline state: ${r.state}`,
+      `support: ${r.support.count} entries (a hub needs ${gen.pick("LH_HUB_MIN_ENTRIES")})`,
+      `status: ${r.status}, row status cell: ${gen.pick("lhBatchStatusLabel")(r)}`,
+      `banner: ${r.minorNote}`,
+    ],
+  };
+});
+
+await demo("v8.1d. the batch table sorts open hubs, then news, then too minor, then duplicates", async () => {
   const gen = g();
   const rows = gen.pick("lhBatchResults");
-  const stub = (tag, status) => ({
+  const stub = (tag, status, state) => ({
     tag, entriesUsed: 5, storyline: `${tag} storyline`, entities: [tag], words: 300,
     lint: { warnings: [], report: [], words: 300 }, links: 0, thin: false, status,
-    note: "", entities: [tag], support: { count: status === "minor" ? 3 : 6, days: 1, span: status === "minor" ? 1 : 4 },
+    note: "", state, support: { count: 4, days: 2, span: 2 },
     tooMinor: status === "minor", minorNote: "", sensitiveExcluded: 0, relay: {},
   });
-  rows.push(stub("Minor One", "minor"), stub("Solid", "ok"), stub("Minor Two", "minor"));
+  rows.push(
+    stub("Dup", "duplicate", "open"),
+    stub("Minor", "minor", "open"),
+    stub("News", "news", "closed"),
+    stub("Hub", "ok", "open"),
+    stub("Hub Two", "short", "open"),
+  );
   const out = gen.pick("lhBatchRows")();
   return {
-    ok: out.map(x => x.tag).join(",") === "Solid,Minor One,Minor Two",
+    ok: out.map(x => x.tag).join(",") === "Hub,Hub Two,News,Minor,Dup"
+      && out[0].state === "open" && out[2].state === "closed",
     lines: [
-      `ran in this order: Minor One, Solid, Minor Two`,
+      `ran in this order: Dup, Minor, News, Hub, Hub Two`,
       `table order: ${out.map(x => `${x.tag} (${x.status})`).join(" | ")}`,
-      `support / day span columns: ${out.map(x => `${x.tag} ${x.support}/${x.span}`).join(", ")}`,
+      `state column: ${out.map(x => `${x.tag} ${x.state}`).join(", ")}`,
+    ],
+  };
+});
+
+await demo("v8.1e. a missing or unreadable state is treated as open", async () => {
+  const gen = g();
+  const states = [undefined, "", "OPEN", "Closed", "maybe"];
+  const got = states.map(v => gen.pick("lhStorylineState")({ storyline_state: v }));
+  const verdicts = [
+    ["open", { count: 3, days: 1, span: 1 }],
+    ["open", { count: 2, days: 1, span: 1 }],
+    ["closed", { count: 9, days: 4, span: 6 }],
+    ["open", { count: 0, days: 0, span: 0 }],
+  ].map(([st, stats]) => `${st}/${stats.count} -> "${gen.pick("lhHubVerdict")(st, stats) || "hub"}"`);
+  return {
+    ok: got.join(",") === "open,open,open,closed,open",
+    lines: [
+      `raw states ${JSON.stringify(states)} -> ${JSON.stringify(got)}`,
+      `verdicts: ${verdicts.join(", ")}`,
+      `(a run with 0 claims is truncation, not a verdict)`,
+    ],
+  };
+});
+
+// --- v8.2 up to five entities ----------------------------------------------
+await demo("v8.2. a five-entity trade has no off-storyline false positive on the 4th and 5th names", async () => {
+  const gen = g();
+  const five = ["Fake Player", "Example Owls", "Fake Bears", "Other Player", "Third Team"];
+  const entries = gen.pick("lhBuildEntries")([
+    entry({ text: "Fake Player is on the move and the Example Owls are talking to the Fake Bears." }),
+    entry({ text: "Other Player would be the second piece going back in the deal." }),
+    entry({ text: "The Third Team would take on salary to make the trade work." }),
+  ], []);
+  const claimsFor = () => ({
+    claims: [
+      { sentence_start: "Fake Player is on the move", entry_index: 0, source_quote: "is on the move" },
+      { sentence_start: "Other Player would be the second piece", entry_index: 1, source_quote: "would be the second piece" },
+      { sentence_start: "The Third Team would take on salary", entry_index: 2, source_quote: "would take on salary" },
+    ],
+    headline_claims: [{ sentence_start: "h", entry_index: 0, source_quote: "is on the move" }],
+    meta_claims: [{ sentence_start: "m", entry_index: 0, source_quote: "is on the move" }],
+    context_sentences: [],
+  });
+  const body = "<p>Fake Player is on the move. Other Player would be the second piece. The Third Team would take on salary.</p>";
+  const withFive = gen.pick("lhVerifyClaims")(
+    Object.assign(claimsFor(), { storyline_entities: five }), entries, body, false);
+  const withThree = gen.pick("lhVerifyClaims")(
+    Object.assign(claimsFor(), { storyline_entities: five.slice(0, 3) }), entries, body, false);
+  const kept = gen.pick("lhEntityList")(five);
+  return {
+    ok: kept.length === 5
+      && withFive.filter(w => /^Off-storyline/.test(w)).length === 0
+      && withThree.filter(w => /^Off-storyline/.test(w)).length === 2,
+    lines: [
+      `entities kept: ${kept.length} of 5 (cap is ${gen.pick("LH_MAX_ENTITIES")})`,
+      `off-storyline warnings with all 5 entities: ${withFive.filter(w => /^Off-storyline/.test(w)).length}`,
+      `off-storyline warnings with only the first 3 (the v7 cap): ${withThree.filter(w => /^Off-storyline/.test(w)).length}`,
+      ...withThree.filter(w => /^Off-storyline/.test(w)).map(w => `  - ${w}`),
+    ],
+  };
+});
+
+// --- v8.3 anchor text is never a domain -------------------------------------
+await demo("v8.3. a substack domain anchor is rewritten to the author", async () => {
+  const gen = g();
+  const entries = gen.pick("lhBuildEntries")([
+    entry({
+      reporter: "Fake Newsletter Writer", outlet: "Fake Letter",
+      source_url: "https://fakeletter.substack.com/p/the-latest",
+      text: "Fake Player and the Example Owls are still talking.",
+    }),
+    entry({
+      reporter: "", outlet: "Example Daily",
+      source_url: "https://example.org/news/two",
+      text: "The Example Owls must decide soon.",
+    }),
+  ], []);
+  const body = '<p><a href="https://fakeletter.substack.com/p/the-latest">fakeletter.substack.com</a> reported the talks are live, '
+    + 'and <a href="https://example.org/news/two">www.example.org</a> says a decision is close. '
+    + '<a href="https://example.net/unknown">https://example.net/unknown</a> adds nothing.</p>';
+  const fixed = gen.pick("lhFixDomainAnchors")(body, entries);
+  const warnings = gen.pick("lhAnchorWarnings")(fixed.fixes);
+  const cats = gen.pick("lhCategorize")(warnings);
+  const anchors = [...fixed.html.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].map(m => m[1]);
+  return {
+    ok: anchors.join(" | ") === "Fake Newsletter Writer | Example Daily | reported"
+      && fixed.fixes.length === 3 && cats["off-storyline/source"] === 3
+      && !/substack\.com<\/a>/.test(fixed.html),
+    lines: [
+      `anchors before: fakeletter.substack.com | www.example.org | https://example.net/unknown`,
+      `anchors after:  ${anchors.join(" | ")}`,
+      `(reporter, then outlet when there is no reporter, then the verb when no entry matches)`,
+      ...warnings.map(w => `  - ${w}`),
+      `batch column "off-storyline/source": ${cats["off-storyline/source"]}`,
+    ],
+  };
+});
+
+await demo("v8.3b. an ordinary byline anchor is left alone", async () => {
+  const gen = g();
+  const entries = gen.pick("lhBuildEntries")([entry({ reporter: "Fake Reporter" })], []);
+  const body = '<p><a href="https://example.com/story/1">Fake Reporter</a> reported the talks are live.</p>';
+  const fixed = gen.pick("lhFixDomainAnchors")(body, entries);
+  return {
+    ok: fixed.fixes.length === 0 && fixed.html === body,
+    lines: [`anchor: Fake Reporter`, `rewrites: ${fixed.fixes.length} (correct)`],
+  };
+});
+
+// --- v8.4 aggregator and bot accounts ---------------------------------------
+await demo("v8.4. a shamsbot item is dropped from the links section", async () => {
+  const gen = g();
+  gen.onFetch(async (url) => {
+    const u = String(url);
+    if (u.endsWith("/data/index/manifest.json")) return { json: V7_CS_MANIFEST };
+    if (u.endsWith("/players/fake-player.json")) {
+      return { json: { items: v7PersonItems(2).concat(v8BotItems(2)) } };
+    }
+    return { ok: false, status: 404, json: {} };
+  });
+  const aggregators = gen.pick("lhParseAggregators")(gen.pick("LH_AGGREGATOR_DEFAULT").join(", "));
+  const cs = await gen.pick("lhFetchStreamForEntities")(["Fake Player"], "", aggregators);
+  const html = gen.pick("lhRenderStreamHtml")(cs.name, cs);
+  const botEntry = gen.pick("lhIsAggregatorEntry")(
+    { reporter: "Fake Rumor Bot", author_handle: "fakerumorbot" }, "https://example.net/post/1", []);
+  return {
+    ok: cs.items.length === 2 && !/bsky\.example\/bot/.test(html)
+      && aggregators.includes("shamsbot") && botEntry === true,
+    lines: [
+      `prefilled aggregator accounts: ${aggregators.join(", ")}`,
+      `index served 4 items: 2 ordinary, 1 @shamsbot, 1 @fakerumorbot1`,
+      `section: ${cs.items.length} items`,
+      ...cs.items.map(it => `  - ${it.lh_label}`),
+      `an archive entry with the handle @fakerumorbot is an aggregator with no list at all: ${botEntry}`,
     ],
   };
 });
