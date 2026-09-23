@@ -809,7 +809,7 @@ const LH_BANNED_PHRASES = [
   "it's not just", "it is not just",
 ];
 const LH_ALLOWED_TAGS = ["p", "a", "strong", "em", "h3"];
-const LH_MIN_WORDS = 280;
+const LH_MIN_WORDS = 250;
 const LH_MAX_WORDS = 550;
 const LH_MAX_HEADLINE = 70;
 const LH_MAX_META = 155;
@@ -836,6 +836,10 @@ const LH_RELATIVE_PATTERNS = [
   /\btoday\b/i,
 ];
 const LH_WEEKDAYS = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday"];
+
+// A platform is where something was posted, never who said it. Nothing is ever
+// attributed to one of these.
+const LH_PLATFORMS = ["YouTube", "Bluesky", "X", "Twitter", "Reddit", "Instagram", "TikTok", "Threads"];
 
 // Content Stream section rules for this mode.
 const LH_CS_MAX_ITEMS = 6;
@@ -873,6 +877,14 @@ State each fact ONCE in the whole piece. A dollar figure, a term length, a team'
 - Use the OUTLET string exactly as given. Never substitute a parent company or a sister publication for it.
 - Never invent a reporter's name, never complete a partial name, never attach a reporter to an entry they are not on.
 
+=== NEVER ATTRIBUTE TO A PLATFORM ===
+YouTube, Bluesky, X, Twitter, Reddit, Instagram, TikTok and Threads are places, not sources. Never write "according to YouTube", "Bluesky reported", "per Reddit" or anything like it, and never make a platform name the clickable text of a link.
+Credit the person instead, in this order:
+1. the entry's REPORTER field, when it has one;
+2. otherwise the name in front of the colon at the start of the entry's text ("Fake Reporter: the team is close" means the source is Fake Reporter);
+3. otherwise the channel or show name on the entry.
+The link still points at the platform URL. Only the name changes.
+
 === ATTRIBUTION ===
 - Attribute every reported fact inline, once, linking the reporter or outlet to that entry's URL: <a href="https://example.com/story">Reporter Name</a> reported...
 - Vary the form: "reported", "according to", "per". Never use the same "per X" construction in two consecutive sentences, and do not open three sentences in a row the same way.
@@ -898,7 +910,7 @@ Third person throughout. No "we", no "I", no first person of any kind. Minor ana
 - No throat-clearing intro. Open on the news, not on setup.
 
 === LENGTH ===
-280 to 550 words of body copy. Never pad. If the entries support fewer words, stop writing. A tight 300-word hub beats a padded 500-word one.
+250 to 550 words of body copy. Never pad. If the entries support fewer words, stop writing. A tight 300-word hub beats a padded 500-word one.
 
 === HEADLINE AND META ===
 - headline: pattern "[Player] [storyline]: latest updates" — specific about the storyline, max 70 characters.
@@ -923,6 +935,7 @@ You may NOT change, add or reword ANY of the following, anywhere:
 - any number, dollar figure, date or quantity
 - any quantifier or hedge: nearly, about, roughly, more than, at least, up to, reportedly, could, may
 - any attribution: a reporter name, an outlet name or a link
+- any absolute date, such as "Sept. 28" or "Oct. 1"
 If a number or a hedge is wrong, unsupported or contradictory, DELETE the sentence that carries it. Do not rewrite it into a different number or a different hedge. Changing "nearly six" to "more than six" is a fabrication, not an edit.
 
 Do not claim to have verified anything. You are not a fact checker and you have no way to confirm a number is right. Never write that something was confirmed, checked or verified.
@@ -932,7 +945,8 @@ Do not claim to have verified anything. You are not a fact checker and you have 
 2. Any sentence whose claim is not supported by the ENTRIES. Delete it whole.
 3. Any internal contradiction. Delete the weaker sentence rather than reconciling the two.
 4. Em dashes, "it's not just X, it's Y" constructions, first person, throat-clearing intros, and these words and phrases: delve, leverage, seamless, robust, navigate, unlock, unleash, foster, intricate, tapestry, testament, "in the realm of", "it's worth noting", "it's important to remember", "not nothing", "not accidental", "meaningful backdrop", "tells you", "rounding error", "franchise-altering".
-5. Any relative time reference that survived: "in seven days", "days away", "next week", "this week", "tomorrow", "tonight", "today", a bare weekday. Delete the reference or the sentence. Do not compute a replacement date yourself.
+5. Any relative time reference that survived: "in seven days", "days away", "next week", "this week", "tomorrow", "tonight", "today", a weekday with no date attached. Delete the reference or the sentence. Do not compute a replacement date yourself.
+   An ABSOLUTE date is not a relative reference. "Sept. 28", "Oct. 1", "Monday, Sept. 28" are already correct: keep them exactly as written. Deleting or changing an absolute date is an error.
 6. Anything outside the allowed tags p, a, strong, em, h3, plus any inline style, class attribute or emoji.
 
 Keep the structure: unheaded lead, then <h3>What we know</h3>, then <h3>What comes next</h3>. Keep every inline source link on the sentences you keep. Do not write a timestamp or an "Updated ..." line; one is added in code.
@@ -1031,7 +1045,7 @@ function lhOutletFromUrl(url, entry) {
   if (host === "espn.com" || host.endsWith(".espn.com")) return "ESPN";
   if (host === "youtube.com" || host.endsWith(".youtube.com") || host === "youtu.be") {
     const who = (entry && (entry.channel || entry.channel_name || entry.reporter || entry.author || entry.byline)) || "";
-    return who || "YouTube";
+    return who || lhLeadingName((entry && entry.text) || "") || "YouTube";
   }
   return "";
 }
@@ -1052,8 +1066,18 @@ function lhResolveOutlet(entry, url) {
   return own || mapped || "";
 }
 
+// Platform posts often carry the speaker as a "Name: ..." prefix on the text.
+function lhLeadingName(text) {
+  const m = (text || "").match(/^\s*([A-Z][A-Za-z.'\u2019-]+(?: [A-Z][A-Za-z.'\u2019-]+){0,3}):\s/);
+  return m ? m[1].trim() : "";
+}
+
 function lhResolveReporter(entry) {
-  return (entry.reporter || entry.author || entry.byline || entry.writer || "").toString().trim();
+  const own = (entry.reporter || entry.author || entry.byline || entry.writer || "").toString().trim();
+  if (own) return own;
+  const prefixed = lhLeadingName(entry.text || "");
+  if (prefixed) return prefixed;
+  return (entry.channel || entry.channel_name || entry.show || "").toString().trim();
 }
 
 // One normalized record per archive entry, numbered for the claim trace.
@@ -1115,6 +1139,31 @@ function lhFactTokens(html) {
   });
   const hedges = new Set(LH_HEDGES.filter(h => text.includes(h)));
   return { tokens, hedges };
+}
+
+// Numbers and dates as they actually appear, used to catch an editor that
+// deleted a fact outright rather than rewriting it. Spelled-out numbers are
+// deliberately left out here: words like "one" and "two" turn up in ordinary
+// prose, and treating every cut clause that contains one as a removed fact
+// would reject almost every legitimate edit.
+function lhFactPresence(html) {
+  const text = lhNormalizeForCompare(lhStripTags(html));
+  const nums = new Set();
+  (text.match(/\$?\d[\d.,]*%?/g) || []).forEach(t => nums.add(t.replace(/[.,]+$/, "")));
+  const dates = new Set();
+  (text.match(/\b(?:jan|feb|sept|oct|nov|dec)\.\s*\d{1,2}\b|\b(?:march|april|may|june|july|august|september|october|november|december)\s+\d{1,2}\b/g) || [])
+    .forEach(d => dates.add(d.replace(/\s+/g, " ")));
+  return { nums, dates };
+}
+
+// Returns the fact the editor dropped entirely, or null. A repeated figure may
+// lose a copy as long as one is left.
+function lhGuardRemoved(writerBody, editorBody) {
+  const w = lhFactPresence(writerBody);
+  const e = lhFactPresence(editorBody);
+  for (const d of w.dates) if (!e.dates.has(d)) return d;
+  for (const n of w.nums) if (!e.nums.has(n)) return n;
+  return null;
 }
 
 // Returns the offending snippet, or null when the editor only cut.
@@ -1252,6 +1301,15 @@ function lhCleanTitle(raw, hasTitle) {
   return hasTitle ? s : s.slice(0, 120);
 }
 
+// Who this item came from: the Bluesky handle, the YouTube channel, the
+// publisher on a news item. Falls back to the displayed source name.
+function lhVoiceKey(it) {
+  const raw = (it.author_handle || it.handle || it.channel || it.channel_name
+    || it.author || it.publisher || it.publisher_name || it.lh_source || "").toString().trim();
+  if (!raw) return ""; // nothing to group on, so nothing collapses
+  return `${it.source || ""}|${raw.toLowerCase()}`;
+}
+
 async function lhFetchStreamItems(player) {
   const ent = await csResolveEntity(player); // reuses the hub's resolver untouched
   if (!ent) return null;
@@ -1315,6 +1373,16 @@ async function lhFetchStreamItems(player) {
     return true;
   });
   items.sort((a, b) => Date.parse(b.published_at || 0) - Date.parse(a.published_at || 0));
+
+  // One item per voice: an author handle, a channel, a publisher. Newest wins.
+  const voices = new Set();
+  items = items.filter(it => {
+    const key = lhVoiceKey(it);
+    if (!key) return true;
+    if (voices.has(key)) return false;
+    voices.add(key);
+    return true;
+  });
   return { name: ent.name, items: items.slice(0, LH_CS_MAX_ITEMS) };
 }
 
@@ -1376,6 +1444,26 @@ function lhLint(headline, meta, bodyHtml, issues, extra) {
   const hrefs = [...bodyHtml.matchAll(/href\s*=\s*"([^"]*)"/gi)].map(m => m[1]);
   if (/the new york times/i.test(text) && hrefs.some(lhIsAthleticUrl)) {
     warnings.push('Body credits "The New York Times" while citing an nytimes.com/athletic URL (should be The Athletic).');
+  }
+
+  // Platforms are places, not sources.
+  const platformHits = new Set();
+  // "X" only counts capitalized, or every lowercase x in the copy would match.
+  const named = LH_PLATFORMS.filter(p => p !== "X").join("|");
+  const scan = (re, flags) => [...text.matchAll(new RegExp(re, flags))].forEach(m => platformHits.add(m[1]));
+  scan(`\\b(?:according to|per)\\s+(${named})\\b`, "gi");
+  scan(`\\b(${named})\\s+(?:reported|reports|said|says)\\b`, "gi");
+  scan("\\b(?:[Aa]ccording to|[Pp]er) (X)\\b", "g");
+  scan("\\b(X) (?:reported|reports|said|says)\\b", "g");
+  [...bodyHtml.matchAll(/<a\b[^>]*>([\s\S]*?)<\/a>/gi)].forEach(m => {
+    const anchor = lhStripTags(m[1]).trim();
+    const hit = LH_PLATFORMS.find(p => p.toLowerCase() === anchor.toLowerCase());
+    if (hit) platformHits.add(hit);
+  });
+  if (platformHits.size) {
+    const canon = [...new Set([...platformHits].map(h =>
+      LH_PLATFORMS.find(p => p.toLowerCase() === h.toLowerCase()) || h))];
+    warnings.push(`Fact attributed to a platform instead of a person: ${canon.join(", ")}`);
   }
 
   // Relative time references, in the body and in the meta description.
@@ -1471,10 +1559,14 @@ async function generateLivingHub() {
     // means it rewrote a fact, so its output is thrown away.
     const extraWarnings = [];
     const editorBody = (edited.body_html || "").trim();
-    const offending = editorBody ? lhGuardEditor(writerBody, editorBody) : "(empty editor output)";
+    const added = editorBody ? lhGuardEditor(writerBody, editorBody) : "(empty editor output)";
+    const removed = editorBody && !added ? lhGuardRemoved(writerBody, editorBody) : null;
+    const offending = added || removed;
     let headline, meta, body, issues;
     if (offending) {
-      extraWarnings.push(`Editor changed a fact or hedge, writer draft kept: "${offending}"`);
+      extraWarnings.push(added
+        ? `Editor changed a fact or hedge, writer draft kept: "${added}"`
+        : `Editor removed a fact: "${removed}" (writer draft kept)`);
       headline = (draft.headline || "").trim();
       meta = (draft.meta_description || "").trim();
       body = writerBody;
